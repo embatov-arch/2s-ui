@@ -53,6 +53,8 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 			return
 		}
 		a.ApiService.Save(c, loginUser, true, hostname)
+	case "refreshPackageExcludes":
+		a.ApiService.RefreshPackageExcludes(c)
 	case "adoptInbounds":
 		a.ApiService.AdoptInbounds(c, loginUser)
 	case "reconcileNode":
@@ -120,6 +122,8 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 		return
 	case "users":
 		a.ApiService.GetUsers(c)
+	case "packageExcludeStatus":
+		a.ApiService.GetPackageExcludeStatus(c)
 	case "settings":
 		a.ApiService.GetSettings(c)
 	case "stats":

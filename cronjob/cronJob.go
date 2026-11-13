@@ -1,6 +1,7 @@
 package cronjob
 
 import (
+	"context"
 	"time"
 
 	"github.com/shenaba/2s-ui/logger"
@@ -99,6 +100,14 @@ func (c *CronJob) Start(loc *time.Location, statsBucketSeconds int64) error {
 			addJob(spec, NewNotifyReportJob(), "notify report")
 		}
 	}
+	// A lightweight hourly poll re-reads the administrator's saved schedule.
+	// Manual mode never contacts GitHub. It never runs per subscriber.
+	addJob("@every 1h", cron.FuncJob(func() {
+		if err := service.PackageExcludeRefreshIfDue(context.Background()); err != nil {
+			logger.Warning("package exclusion refresh failed, retaining previous cache: ", err)
+		}
+	}), "GitHub Android package list")
+
 	// database WAL checkpoint
 	addJob("@every 10m", NewWALCheckpointJob(), "WAL checkpoint")
 

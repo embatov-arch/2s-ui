@@ -81,6 +81,12 @@ func (a *APP) Start() error {
 	// (#251).
 	a.configService.ReclaimCore()
 
+	// Reconcile cached GitHub packages with the saved JSON template on every
+	// startup, including SIGHUP. No GitHub network request is made here.
+	if err := service.PackageExcludeInventory(); err != nil {
+		logger.Warning("package exclusion inventory failed; keeping last prepared snapshot: ", err)
+	}
+
 	loc, err := a.SettingService.GetTimeLocation()
 	if err != nil {
 		return err

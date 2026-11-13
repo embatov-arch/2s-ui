@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -211,6 +212,24 @@ func (a *ApiService) GetUsers(c *gin.Context) {
 		return
 	}
 	jsonObj(c, *users, nil)
+}
+
+func (a *ApiService) GetPackageExcludeStatus(c *gin.Context) {
+	v, err := service.PackageExcludeStatus()
+	jsonObj(c, v, err)
+}
+
+func (a *ApiService) RefreshPackageExcludes(c *gin.Context) {
+	// Explicit admin action: not invoked by subscriptions or client creation.
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	defer cancel()
+	err := service.PackageExcludeRefresh(ctx)
+	if err != nil {
+		jsonMsg(c, "refreshPackageExcludes", err)
+		return
+	}
+	v, err := service.PackageExcludeStatus()
+	jsonObj(c, v, err)
 }
 
 func (a *ApiService) GetSettings(c *gin.Context) {
@@ -563,6 +582,14 @@ func (a *ApiService) Save(c *gin.Context, loginUser string, fanout bool, hostnam
 	if err != nil {
 		jsonMsg(c, "save", err)
 		return
+	}
+	// The settings transaction is already committed. Rebuild once here,
+	// never inside a subscriber request. A bad template leaves the earlier
+	// prepared snapshot intact and does not undo unrelated settings saves.
+	if obj == "settings" {
+		if err := service.PackageExcludeInventory(); err != nil {
+			logger.Warning("package exclusion inventory after settings save: ", err)
+		}
 	}
 	if fanout && (obj == "clients" || obj == "inbounds") {
 		// Fire-and-forget: network IO must not block the save's DB txn (already

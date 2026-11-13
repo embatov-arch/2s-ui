@@ -92,6 +92,11 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 		return nil, nil, err
 	}
 
+	// Only an atomic, prevalidated immutable template read. No per-client
+	// source fetch, package ID scanning or conflict resolution happens here.
+	if ready, ok := service.PackageExcludePreparedInbounds(); ok {
+		jsonConfig["inbounds"] = ready
+	}
 	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
 	resultStr := string(result)
 

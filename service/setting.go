@@ -74,6 +74,15 @@ var protectedSettings = map[string]bool{
 	// row, so a write arriving through the settings endpoint would leave the
 	// two disagreeing.
 	maintenanceKey: true,
+
+	// Internal GitHub list cache and prepared JSON are never editable through
+	// the generic settings API: only the refresh service updates these values.
+	"packageExcludeRaw":       true,
+	"packageExcludeRawURL":    true,
+	"packageExcludeETag":      true,
+	"packageExcludeCheckedAt": true,
+	"packageExcludeUpdatedAt": true,
+	"packageExcludePrepared":  true,
 }
 
 var defaultValueMap = map[string]string{
@@ -114,16 +123,25 @@ var defaultValueMap = map[string]string{
 	"subShowInfo":        "false",
 	"subURI":             "",
 	"subJsonExt":         "",
-	"subClashExt":        "",
-	"subClashNoDefGrp":   "false",
-	"subClashSprtAll":    "false",
-	"subClashUdp":        "false",
-	"subCustomHeaders":   "",
-	"globalReset":        "",
-	"globalResetLast":    "0",
-	"globalResetArmed":   "",
-	"config":             defaultConfig,
-	"version":            config.GetVersion(),
+
+	"packageExcludeURL":       "",
+	"packageExcludeSchedule":  "manual",
+	"packageExcludeRaw":       "",
+	"packageExcludeRawURL":    "",
+	"packageExcludeETag":      "",
+	"packageExcludeCheckedAt": "0",
+	"packageExcludeUpdatedAt": "0",
+	"packageExcludePrepared":  "",
+	"subClashExt":             "",
+	"subClashNoDefGrp":        "false",
+	"subClashSprtAll":         "false",
+	"subClashUdp":             "false",
+	"subCustomHeaders":        "",
+	"globalReset":             "",
+	"globalResetLast":         "0",
+	"globalResetArmed":        "",
+	"config":                  defaultConfig,
+	"version":                 config.GetVersion(),
 
 	// Notifications. notifyEvents is a comma-separated list of notify.Kind
 	// values -- the kinds themselves are documented in service/notify/event.go,
@@ -903,6 +921,16 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		}
 		if key == "subCustomHeaders" {
 			if _, err = ParseSubCustomHeaders(obj); err != nil {
+				return err
+			}
+		}
+		if key == "packageExcludeURL" {
+			if _, err := packageSourceURL(obj); err != nil {
+				return err
+			}
+		}
+		if key == "packageExcludeSchedule" {
+			if err := PackageExcludeValidateSettings("", obj); err != nil {
 				return err
 			}
 		}

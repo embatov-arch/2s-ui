@@ -219,6 +219,37 @@
             <SwitchLabel v-model="platformProxy" :label="$t('ui.platformProxy')" />
           </div>
         </div>
+        <div class="sub-label">{{ $t('setting.packageExcludeTitle') }}</div>
+        <div class="field-grid">
+          <Field :label="$t('setting.packageExcludeSource')" :mb="0">
+            <input class="input mono" dir="ltr" v-model="settings.packageExcludeURL"
+              placeholder="https://github.com/owner/repo/blob/main/packages.txt" />
+          </Field>
+          <Field :label="$t('setting.packageExcludeSchedule')" :mb="0">
+            <Select v-model="settings.packageExcludeSchedule">
+              <option value="manual">{{ $t('setting.packageExcludeManual') }}</option>
+              <option value="daily">{{ $t('setting.packageExcludeDaily') }}</option>
+              <option value="weekly">{{ $t('setting.packageExcludeWeekly') }}</option>
+              <option value="monthly">{{ $t('setting.packageExcludeMonthly') }}</option>
+            </Select>
+          </Field>
+        </div>
+        <div style="font-size: 12px; color: var(--text-3); margin-top: 7px;">
+          {{ $t('setting.packageExcludeHint') }}
+        </div>
+        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
+          <Btn sm :loading="packageExcludeRefreshing" :disabled="stateChange || !settings.packageExcludeURL || packageExcludeRefreshing" @click="refreshPackageExclude">
+            <Ico name="refresh" :size="14" /> {{ $t('setting.packageExcludeRefresh') }}
+          </Btn>
+          <span v-if="packageExcludeStatus" style="font-size: 12px; color: var(--text-3);">
+            {{ $t('setting.packageExcludeCached') }}: {{ packageExcludeStatus.cached }} ·
+            {{ $t('setting.packageExcludePrepared') }}: {{ packageExcludeStatus.prepared }} ·
+            {{ $t('setting.packageExcludeConflicts') }}: {{ packageExcludeStatus.conflicts }}
+          </span>
+        </div>
+        <div v-if="packageExcludeStatus" style="font-size: 12px; color: var(--text-3); margin-top: 6px;">
+          {{ $t('setting.packageExcludeLastUpdate') }}: {{ packageExcludeStamp(packageExcludeStatus.updatedAt) }}
+        </div>
       </template>
 
       <div class="builder-foot">
@@ -426,6 +457,23 @@ import CertsPanel from '@/components/settings/CertsPanel.vue'
 import { loadCerts, certsLoaded, findCert, daysLeft } from '@/plugins/certs'
 
 const tab = ref('interface')
+const packageExcludeRefreshing = ref(false)
+const packageExcludeStatus = ref<any>(null)
+const packageExcludeStamp = (v: any): string => {
+  const n = Number(v)
+  return n > 0 ? new Date(n * 1000).toLocaleString() : i18n.global.t('setting.packageExcludeNever')
+}
+const loadPackageExcludeStatus = async () => {
+  const msg = await HttpUtils.get('api/packageExcludeStatus')
+  if (msg.success) packageExcludeStatus.value = msg.obj
+}
+const refreshPackageExclude = async () => {
+  packageExcludeRefreshing.value = true
+  try {
+    const msg = await HttpUtils.post('api/refreshPackageExcludes', {})
+    if (msg.success) packageExcludeStatus.value = msg.obj
+  } finally { packageExcludeRefreshing.value = false }
+}
 const loading = ref(false)
 // 保存时要跟当前值逐字段比对,判断反代配置需不需要重新生成(见 save)
 const oldSettings = ref<Record<string, any>>({})
@@ -477,6 +525,8 @@ const settings = ref({
   subRemarkPrefix: "true",
   subURI: "",
   subJsonExt: "",
+  packageExcludeURL: "",
+  packageExcludeSchedule: "manual",
   subClashExt: "",
   subClashNoDefGrp: "false",
   subClashSprtAll: "false",
@@ -524,6 +574,7 @@ onMounted(async () => {
   // 触发整个面板重启。
   await loadCerts()
   await loadData()
+  void loadPackageExcludeStatus()
   loading.value = false
   // 不 await:它要跑一次 nginx -T,而这只是一条提示,不该让设置页干等着
   void checkProxyDrift()
