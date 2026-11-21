@@ -92,7 +92,7 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 		return nil, nil, err
 	}
 
-	// Apply the prepared snapshot. Never fetch GitHub while serving clients.
+	// Apply the prepared snapshot. Never fetch remote sources while serving clients.
 	service.ApplyPackageExcludes(jsonConfig["inbounds"])
 	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
 	resultStr := string(result)

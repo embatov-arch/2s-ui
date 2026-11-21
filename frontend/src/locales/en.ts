@@ -362,7 +362,7 @@ export default {
     packageExcludeManualEnableTun: "Enable TUN for manual exclusions",
     packageExcludeApplications: "applications",
     packageExcludeLastCheck: "Last checked",
-    packageExcludeSources: "Automatic — GitHub sources",
+    packageExcludeSources: "Automatic — remote HTTPS lists",
     packageExcludeAddSource: "Add source",
     packageExcludeFailed: "Download failed",
     packageExcludeScheduleDays: "Update interval (days)",

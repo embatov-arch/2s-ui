@@ -361,7 +361,7 @@ export default {
     packageExcludeManualEnableTun: "Включить TUN для ручного добавления",
     packageExcludeApplications: "приложений",
     packageExcludeLastCheck: "Проверено",
-    packageExcludeSources: "Автоматически — GitHub",
+    packageExcludeSources: "Автоматически — удалённые HTTPS-списки",
     packageExcludeAddSource: "Добавить источник",
     packageExcludeFailed: "Ошибка загрузки",
     packageExcludeScheduleDays: "Интервал проверки (дней)",

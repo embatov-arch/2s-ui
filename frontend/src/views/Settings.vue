@@ -242,10 +242,10 @@
         </div>
       </details>
 
-      <!-- Manual IDs and GitHub repositories always live in one visual group.
+      <!-- Manual IDs and remote HTTPS sources always live in one visual group.
            The existing TUN exclusion value remains the single editable source
            of truth for manual IDs; it is not copied to a new setting. -->
-      <section class="json-compact-block json-app-exclusions">
+      <section v-if="enablePackageExclusions" class="json-compact-block json-app-exclusions">
         <div class="json-compact-heading">{{ $t('setting.packageExcludeTitle') }}</div>
         <Field :label="$t('setting.packageExcludeManualIDs') + ' ' + $t('commaSeparated')" :mb="0">
           <input v-if="enableInb" class="input mono" v-model="tunExcludePkg"
@@ -259,7 +259,7 @@
           <div v-for="(source, index) in packageExcludeSources" :key="index" class="json-package-row">
             <div class="json-package-value">
               <input class="input mono" dir="ltr" :value="source" @input="editPackageSource(index, $event)"
-                     placeholder="https://raw.githubusercontent.com/owner/repo/main/packages.txt" />
+                     placeholder="https://example.com/android-packages.txt" />
               <div v-if="packageSourceStatus(source)" class="json-source-status">
                 {{ packageSourceStatus(source).cached }} {{ $t('setting.packageExcludeApplications') }} ·
                 {{ $t('setting.packageExcludeLastCheck') }}: {{ packageExcludeStamp(packageSourceStatus(source).checkedAt) }}
@@ -303,6 +303,7 @@
           <label class="pop-item" @click.prevent="enableDns = !enableDns"><Toggle :model-value="enableDns" style="pointer-events: none;" /> {{ $t('ui.dnsOpt') }}</label>
           <label class="pop-item" @click.prevent="enableInb = !enableInb"><Toggle :model-value="enableInb" style="pointer-events: none;" /> {{ $t('objects.inbound') }}</label>
           <label class="pop-item" @click.prevent="enableExp = !enableExp"><Toggle :model-value="enableExp" style="pointer-events: none;" /> {{ $t('ui.experimental') }}</label>
+          <label class="pop-item" @click.prevent="enablePackageExclusions = !enablePackageExclusions"><Toggle :model-value="enablePackageExclusions" style="pointer-events: none;" /> {{ $t('setting.packageExcludeTitle') }}</label>
         </Pop>
       </div>
     </SettingsGroup>
@@ -537,7 +538,7 @@ const loadPackageExcludeStatus = async () => {
   if (msg.success) packageExcludeStatus.value = msg.obj
 }
 // Show status in the same row as its editable URL, not in a duplicate list.
-// The backend stores github.com/.../blob/... links as raw.githubusercontent.com
+// The backend normalizes GitHub blob links to raw.githubusercontent.com
 // URLs; match the row the same way so its status shows under either spelling.
 const canonicalPackageUrl = (value: string): string => {
   const m = value.trim().match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/)
@@ -1530,6 +1531,47 @@ const enableInb = computed({
 const enableExp = computed({
   get: (): boolean => subJsonExt.value?.experimental != undefined,
   set: (v: boolean) => { v ? subJsonExt.value.experimental = defaultExp : delete subJsonExt.value.experimental }
+})
+
+// Native-style section toggle, matching the four existing JSON-section toggles.
+// Turning OFF deletes all manual TUN exclusions and configured remote list URLs.
+// Turning ON starts with an empty exclusion list; there is no automatic restore.
+const enablePackageExclusions = computed({
+  get: (): boolean =>
+    packageExcludeSources.value.some(source => source.trim().length > 0) ||
+    (Array.isArray(subJsonExt.value?.inbounds) && subJsonExt.value.inbounds.some(
+      (inbound: any) => inbound?.type === 'tun' && Object.hasOwn(inbound, 'exclude_package')
+    )),
+  set: (enabled: boolean) => {
+    if (!enabled) {
+      // All configured TUNs, not only the first one displayed in the simple editor.
+      if (Array.isArray(subJsonExt.value?.inbounds)) {
+        for (const inbound of subJsonExt.value.inbounds) {
+          if (inbound?.type === 'tun') delete inbound.exclude_package
+        }
+      }
+      writePackageSources([])
+      settings.value.packageExcludeSchedule = '0'
+      return
+    }
+
+    // An explicit ON state must persist after saving even when the list is
+    // empty, like the built-in section toggles. A TUN exclude_package: [] is
+    // valid sing-box JSON and gives the computed getter a durable on-state.
+    if (!Array.isArray(subJsonExt.value?.inbounds)) {
+      subJsonExt.value.inbounds = JSON.parse(JSON.stringify(defaultInb))
+    }
+    const currentInbounds = subJsonExt.value.inbounds as any[]
+    if (!currentInbounds.some(inbound => inbound?.type === 'tun')) {
+      // Keep all existing custom non-TUN inbounds intact.
+      currentInbounds.unshift(JSON.parse(JSON.stringify(defaultInb[0])))
+    }
+    for (const inbound of currentInbounds) {
+      if (inbound?.type === 'tun' && !Object.hasOwn(inbound, 'exclude_package')) {
+        inbound.exclude_package = []
+      }
+    }
+  },
 })
 
 const dns = computed((): any => subJsonExt.value?.dns ?? undefined)

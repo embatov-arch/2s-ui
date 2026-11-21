@@ -3,22 +3,82 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPackageSourceURL(t *testing.T) {
-	got, err := packageSourceURL("https://github.com/o/r/blob/main/dir/list.txt")
-	if err != nil || got != "https://raw.githubusercontent.com/o/r/main/dir/list.txt" {
-		t.Fatalf("canonical: %q %v", got, err)
+	valid := map[string]string{
+		"https://github.com/o/r/blob/main/dir/list.txt":            "https://raw.githubusercontent.com/o/r/main/dir/list.txt",
+		"https://raw.githubusercontent.com/o/r/main/a.txt":         "https://raw.githubusercontent.com/o/r/main/a.txt",
+		"https://gitlab.com/team/repo/-/raw/main/packages.txt":     "https://gitlab.com/team/repo/-/raw/main/packages.txt",
+		"https://lists.example.org/android/apps.txt":               "https://lists.example.org/android/apps.txt",
+		"https://files.example.net:8443/lists/apps.json?version=2": "https://files.example.net:8443/lists/apps.json?version=2",
+		"https://1.1.1.1/apps.txt":                                 "https://1.1.1.1/apps.txt",
 	}
-	for _, bad := range []string{"http://raw.githubusercontent.com/o/r/main/a.txt", "https://example.com/a.txt", "https://github.com/o/r", "https://github.com/o/r/blob/main/a.txt?token=x", "https://github.com/o/r/blob/main/../a.txt"} {
-		if _, err := packageSourceURL(bad); err == nil {
-			t.Errorf("expected invalid URL: %s", bad)
+	for source, want := range valid {
+		got, err := packageSourceURL(source)
+		if err != nil || got != want {
+			t.Errorf("URL %q: got %q, want %q: %v", source, got, want, err)
 		}
+	}
+	bad := []string{
+		"http://example.com/apps.txt", "file:///etc/passwd", "https://example.com/",
+		"https://user:password@example.com/apps.txt", "https://example.com/apps.txt#fragment",
+		"https://localhost/apps.txt", "https://service.internal/apps.txt",
+		"https://127.0.0.1/apps.txt", "https://10.0.0.5/apps.txt",
+		"https://100.64.1.1/apps.txt", "https://169.254.169.254/latest/meta-data/",
+		"https://192.0.2.1/apps.txt", "https://[::1]/apps.txt",
+		"https://github.com/o/r/blob/main/../a.txt",
+		"https://github.com/o/r/blob/main/a.txt?raw=1",
+	}
+	for _, source := range bad {
+		if _, err := packageSourceURL(source); err == nil {
+			t.Errorf("accepted unsafe source URL %q", source)
+		}
+	}
+}
+
+func TestPackageSourceSSRFProtection(t *testing.T) {
+	for _, source := range []string{
+		"127.0.0.1:443", "169.254.169.254:443", "10.0.0.1:443",
+		"100.64.0.1:443", "192.0.2.1:443", "[::1]:443", "[fd00::1]:443",
+	} {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_, err := packageSafeDialContext(ctx, "tcp", source)
+		cancel()
+		if err == nil {
+			t.Errorf("SSRF protection did not block %s", source)
+		}
+	}
+	if !packagePublicIP(net.ParseIP("1.1.1.1")) || !packagePublicIP(net.ParseIP("2606:4700:4700::1111")) {
+		t.Fatal("public IP incorrectly rejected")
+	}
+	if packagePublicIP(net.ParseIP("::ffff:127.0.0.1")) {
+		t.Fatal("IPv4-mapped loopback incorrectly accepted")
+	}
+	target, _ := http.NewRequest(http.MethodGet, "https://cdn.example.net/list.txt", nil)
+	if err := packageSafeRedirect(target, []*http.Request{target}); err != nil {
+		t.Fatalf("safe public CDN redirect rejected: %v", err)
+	}
+	for _, url := range []string{"http://cdn.example.net/list.txt", "https://169.254.169.254/list.txt"} {
+		target, _ := http.NewRequest(http.MethodGet, url, nil)
+		if err := packageSafeRedirect(target, []*http.Request{target}); err == nil {
+			t.Errorf("unsafe redirect accepted: %s", url)
+		}
+	}
+	target, _ = http.NewRequest(http.MethodGet, "https://cdn.example.net/list.txt", nil)
+	if err := packageSafeRedirect(target, make([]*http.Request, 5)); err == nil {
+		t.Error("redirect chain limit ignored")
+	}
+	transport, ok := packageHTTP.Transport.(*http.Transport)
+	if !ok || transport.Proxy != nil || transport.DialContext == nil {
+		t.Fatal("default source downloader does not enforce safe direct dialing")
 	}
 }
 

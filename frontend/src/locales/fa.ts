@@ -360,7 +360,7 @@ export default {
     packageExcludeManualEnableTun: "فعال‌کردن TUN برای افزودن دستی",
     packageExcludeApplications: "برنامه",
     packageExcludeLastCheck: "آخرین بررسی",
-    packageExcludeSources: "خودکار — منابع گیت‌هاب",
+    packageExcludeSources: "خودکار — فهرست‌های HTTPS راه‌دور",
     packageExcludeAddSource: "افزودن منبع",
     packageExcludeFailed: "خطای دریافت",
     packageExcludeScheduleDays: "فاصله بررسی (روز)",

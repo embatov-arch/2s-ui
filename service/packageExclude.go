@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"slices"
@@ -41,8 +43,16 @@ var (
 	packageLock     sync.Mutex
 	packageCurrent  atomic.Pointer[packageSnapshot]
 	packageHTTP     = &http.Client{
-		Timeout:       15 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Timeout: 15 * time.Second,
+		// Explicitly ignore environment proxies and validate every resolved IP.
+		Transport: &http.Transport{
+			Proxy:                 nil,
+			DialContext:           packageSafeDialContext,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			DisableKeepAlives:     true,
+		},
+		CheckRedirect: packageSafeRedirect,
 	}
 )
 
@@ -90,6 +100,107 @@ func ApplyPackageExcludes(inbounds interface{}) {
 	}
 }
 
+// Block private, loopback, link-local, shared, benchmark, documentation and
+// reserved addresses. IsGlobalUnicast alone does NOT exclude all of these.
+var packageNonPublicNetworks = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("224.0.0.0/4"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("100::/64"),
+	netip.MustParsePrefix("2001:db8::/32"),
+	netip.MustParsePrefix("fec0::/10"),
+}
+
+func packagePublicIP(ip net.IP) bool {
+	address, ok := netip.AddrFromSlice(ip)
+	if !ok || address.Zone() != "" {
+		return false
+	}
+	address = address.Unmap()
+	if !address.IsGlobalUnicast() || address.IsPrivate() || address.IsLoopback() || address.IsLinkLocalUnicast() {
+		return false
+	}
+	for _, blocked := range packageNonPublicNetworks {
+		if blocked.Contains(address) {
+			return false
+		}
+	}
+	return true
+}
+
+func packagePublicHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == "" || strings.ContainsAny(host, string([]byte{92, 37, 32, 9, 13, 10})) {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return packagePublicIP(ip)
+	}
+	if !strings.Contains(host, ".") {
+		return false
+	}
+	for _, suffix := range []string{".localhost", ".local", ".lan", ".internal", ".home.arpa", ".test", ".invalid", ".example", ".onion", ".localdomain"} {
+		if strings.HasSuffix(host, suffix) {
+			return false
+		}
+	}
+	return true
+}
+
+// Resolve then dial the checked IP itself. Dialing the hostname again would
+// permit DNS rebinding between the check and the actual TCP connection.
+func packageSafeDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if !packagePublicHost(host) {
+		return nil, fmt.Errorf("package source host is not public: %q", host)
+	}
+	resolved, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(resolved) == 0 {
+		return nil, errors.New("package source host has no IP addresses")
+	}
+	for _, ip := range resolved {
+		if !packagePublicIP(ip.IP) || ip.Zone != "" {
+			return nil, fmt.Errorf("package source host resolves to a non-public IP: %q", host)
+		}
+	}
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	var failures []error
+	for _, ip := range resolved {
+		connection, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.IP.String(), port))
+		if err == nil {
+			return connection, nil
+		}
+		failures = append(failures, err)
+	}
+	return nil, errors.Join(failures...)
+}
+
+// Redirects are common with GitLab, object storage and download CDNs.
+// Validate every hop; the transport independently checks and pins DNS IPs.
+func packageSafeRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 5 {
+		return errors.New("too many package source redirects")
+	}
+	_, err := packageSourceURL(req.URL.String())
+	if err != nil {
+		return fmt.Errorf("unsafe package source redirect: %w", err)
+	}
+	return nil
+}
+
 func packageSourceURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -102,26 +213,30 @@ func packageSourceURL(raw string) (string, error) {
 	if err != nil || u == nil {
 		return "", errors.New("invalid package source URL")
 	}
-	if u.Scheme != "https" || u.User != nil || u.Port() != "" || u.Fragment != "" || u.RawQuery != "" || u.RawPath != "" {
-		return "", errors.New("package list requires a plain HTTPS GitHub file URL")
+	if u.Scheme != "https" || u.User != nil || u.Fragment != "" || u.Opaque != "" || u.Hostname() == "" {
+		return "", errors.New("package list requires a public HTTPS URL without credentials or fragments")
 	}
-	if u.Hostname() == "github.com" {
-		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-		if len(parts) < 5 || parts[2] != "blob" {
-			return "", errors.New("use a GitHub file URL, not a repository homepage")
+	if !packagePublicHost(u.Hostname()) {
+		return "", errors.New("package source must use a public HTTPS hostname or IP")
+	}
+	if u.Path == "" || u.Path == "/" || strings.ContainsAny(u.Path, string([]byte{92, 13, 10})) {
+		return "", errors.New("package source URL must identify a file path")
+	}
+	for _, part := range strings.Split(u.Path, "/") {
+		if part == "." || part == ".." {
+			return "", errors.New("unsafe package source file path")
 		}
-		u.Host = "raw.githubusercontent.com"
-		u.Path = "/" + strings.Join(append(parts[:2], parts[3:]...), "/")
-	} else if u.Hostname() != "raw.githubusercontent.com" {
-		return "", errors.New("only github.com/blob and raw.githubusercontent.com are supported")
 	}
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) < 4 {
-		return "", errors.New("GitHub URL must identify a file")
-	}
-	for _, p := range parts {
-		if p == "" || p == "." || p == ".." || strings.ContainsAny(p, "\\\r\n") {
-			return "", errors.New("unsafe GitHub path")
+	// Preserve the user-friendly GitHub file URL and the historical cache key.
+	if strings.EqualFold(u.Hostname(), "github.com") {
+		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+		if len(parts) >= 5 && parts[2] == "blob" {
+			if u.RawQuery != "" {
+				return "", errors.New("GitHub blob links must not contain query parameters")
+			}
+			u.Host = "raw.githubusercontent.com"
+			u.Path = "/" + strings.Join(append(parts[:2], parts[3:]...), "/")
+			u.RawPath = ""
 		}
 	}
 	return u.String(), nil
@@ -133,10 +248,10 @@ func parsePackageSources(raw string) ([]string, error) {
 	}
 	var input []string
 	if err := json.Unmarshal([]byte(raw), &input); err != nil {
-		return nil, fmt.Errorf("GitHub sources must be a JSON array: %w", err)
+		return nil, fmt.Errorf("package sources must be a JSON array: %w", err)
 	}
 	if len(input) > maxPackageSources {
-		return nil, fmt.Errorf("too many GitHub sources (maximum %d)", maxPackageSources)
+		return nil, fmt.Errorf("too many remote sources (maximum %d)", maxPackageSources)
 	}
 	out := make([]string, 0, len(input))
 	for _, entry := range input {
@@ -462,14 +577,14 @@ func packageFetch(ctx context.Context, source string, old packageSourceCache) (p
 		return old, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return old, fmt.Errorf("GitHub returned HTTP %d", resp.StatusCode)
+		return old, fmt.Errorf("remote source returned HTTP %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPackageFile+1))
 	if err != nil {
 		return old, err
 	}
 	if len(body) > maxPackageFile {
-		return old, errors.New("GitHub package file exceeds 512 KiB")
+		return old, errors.New("remote package file exceeds 512 KiB")
 	}
 	ids, err := parsePackageFile(body)
 	if err != nil {
@@ -559,7 +674,7 @@ func PackageExcludeRefresh(ctx context.Context) error {
 		return err
 	}
 	if len(sources) == 0 {
-		return errors.New("configure a GitHub file URL first")
+		return errors.New("configure a public HTTPS file URL first")
 	}
 	return packageRefresh(ctx, func(string, packageSourceCache) bool { return true })
 }
@@ -574,7 +689,7 @@ func PackageExcludeRefreshSource(ctx context.Context, source string) error {
 		return err
 	}
 	if !slices.Contains(sources, want) {
-		return errors.New("GitHub source is not configured")
+		return errors.New("remote source is not configured")
 	}
 	return packageRefresh(ctx, func(s string, _ packageSourceCache) bool { return s == want })
 }

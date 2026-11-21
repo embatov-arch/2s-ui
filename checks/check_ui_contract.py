@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import sys
 
-SECTION_START = '<section class="json-compact-block json-app-exclusions">'
+SECTION_START = '<section v-if="enablePackageExclusions" class="json-compact-block json-app-exclusions">'
 SECTION_END = '<div class="builder-foot json-compact-foot">'
 
 
@@ -82,6 +82,11 @@ def check(path: Path) -> None:
     ):
         if selector not in src:
             raise ValueError(f'missing styling/responsive rule {selector}')
+    if src.count('const enablePackageExclusions = computed({') != 1:
+        raise ValueError('Android exclusions toggle logic missing or duplicated')
+    if src.count('@click.prevent="enablePackageExclusions = !enablePackageExclusions"') != 1:
+        raise ValueError('Android exclusions menu toggle missing or duplicated')
+
     if src.count('const packageExcludeSources = computed') != 1:
         raise ValueError('duplicated or absent source-list state')
     if src.count('const tunExcludePkg = computed') != 1:

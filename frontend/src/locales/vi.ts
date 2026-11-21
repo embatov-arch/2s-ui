@@ -360,7 +360,7 @@ export default {
     packageExcludeManualEnableTun: "Bật TUN để thêm ứng dụng thủ công",
     packageExcludeApplications: "ứng dụng",
     packageExcludeLastCheck: "Kiểm tra lần cuối",
-    packageExcludeSources: "Tự động — nguồn GitHub",
+    packageExcludeSources: "Tự động — danh sách HTTPS từ xa",
     packageExcludeAddSource: "Thêm nguồn",
     packageExcludeFailed: "Tải xuống thất bại",
     packageExcludeScheduleDays: "Khoảng cập nhật (ngày)",

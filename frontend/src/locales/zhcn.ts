@@ -360,7 +360,7 @@ export default {
     packageExcludeManualEnableTun: "启用 TUN 以手动添加",
     packageExcludeApplications: "个应用",
     packageExcludeLastCheck: "上次检查",
-    packageExcludeSources: "自动 — GitHub 来源",
+    packageExcludeSources: "自动 — 远程 HTTPS 列表",
     packageExcludeAddSource: "添加来源",
     packageExcludeFailed: "下载失败",
     packageExcludeScheduleDays: "检查间隔（天）",
