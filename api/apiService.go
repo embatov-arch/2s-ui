@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -211,6 +212,37 @@ func (a *ApiService) GetUsers(c *gin.Context) {
 		return
 	}
 	jsonObj(c, *users, nil)
+}
+
+func (a *ApiService) GetPackageExcludeStatus(c *gin.Context) {
+	status, err := service.PackageExcludeStatus()
+	jsonObj(c, status, err)
+}
+
+func (a *ApiService) RefreshPackageExcludes(c *gin.Context) {
+	source := c.PostForm("source")
+	if source == "" && strings.Contains(c.GetHeader("Content-Type"), "application/json") {
+		var body struct {
+			Source string `json:"source"`
+		}
+		if err := c.ShouldBindJSON(&body); err == nil {
+			source = body.Source
+		}
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+	var err error
+	if strings.TrimSpace(source) == "" {
+		err = service.PackageExcludeRefresh(ctx)
+	} else {
+		err = service.PackageExcludeRefreshSource(ctx, source)
+	}
+	if err != nil {
+		jsonMsg(c, "refreshPackageExcludes", err)
+		return
+	}
+	status, err := service.PackageExcludeStatus()
+	jsonObj(c, status, err)
 }
 
 func (a *ApiService) GetSettings(c *gin.Context) {
@@ -563,6 +595,9 @@ func (a *ApiService) Save(c *gin.Context, loginUser string, fanout bool, hostnam
 	if err != nil {
 		jsonMsg(c, "save", err)
 		return
+	}
+	if obj == "settings" {
+		service.PackageExcludeReload()
 	}
 	if fanout && (obj == "clients" || obj == "inbounds") {
 		// Fire-and-forget: network IO must not block the save's DB txn (already

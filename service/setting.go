@@ -62,11 +62,19 @@ var defaultConfig = `{
 // version, globalResetLast and globalResetArmed are bookkeeping the panel
 // advances itself.
 var protectedSettings = map[string]bool{
-	"secret":           true,
-	"config":           true,
-	"version":          true,
-	"globalResetLast":  true,
-	"globalResetArmed": true,
+	packageCacheKey:           true,
+	"packageExcludeURL":       true,
+	"packageExcludeRaw":       true,
+	"packageExcludeRawURL":    true,
+	"packageExcludeETag":      true,
+	"packageExcludeCheckedAt": true,
+	"packageExcludeUpdatedAt": true,
+	"packageExcludePrepared":  true,
+	"secret":                  true,
+	"config":                  true,
+	"version":                 true,
+	"globalResetLast":         true,
+	"globalResetArmed":        true,
 	// Not seeded with the others, but GetAllSetting reads the whole table, so
 	// the row reaches the settings form as soon as the switch has been used
 	// once -- and the form posts back what it was given. maintenance has an
@@ -114,6 +122,9 @@ var defaultValueMap = map[string]string{
 	"subShowInfo":        "false",
 	"subURI":             "",
 	"subJsonExt":         "",
+	packageSourcesKey:    "[]",
+	packageScheduleKey:   "0",
+	packageCacheKey:      "",
 	"subClashExt":        "",
 	"subClashNoDefGrp":   "false",
 	"subClashSprtAll":    "false",
@@ -903,6 +914,11 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		}
 		if key == "subCustomHeaders" {
 			if _, err = ParseSubCustomHeaders(obj); err != nil {
+				return err
+			}
+		}
+		if key == packageSourcesKey || key == packageScheduleKey {
+			if err := ValidatePackageSetting(key, obj); err != nil {
 				return err
 			}
 		}

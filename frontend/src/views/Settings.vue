@@ -138,90 +138,161 @@
 
     <!-- ===================== JSON sub ===================== -->
     <SettingsGroup v-else-if="tab === 'jsonSub'">
-      <div style="font-size: 12.5px; color: var(--text-3); padding: 12px 0 14px;">{{ $t('ui.jsonExtDesc') }}</div>
+      <!-- Keep primary routing controls visible. Secondary DNS, TUN and log
+           options fold without toggling their actual configuration. -->
+      <section class="json-compact-block json-compact-routing">
+        <div class="json-compact-heading">{{ $t('pages.rules') }}</div>
+        <div class="field-grid json-compact-fields">
+          <ChipSelect v-model="ruleToDirect" :options="geoList" :label="$t('setting.toDirect')" :placeholder="$t('ui.selectHint')" />
+          <ChipSelect v-model="ruleToBlock" :options="geoList" :label="$t('setting.toBlock')" :placeholder="$t('ui.selectHint')" />
+        </div>
+      </section>
 
-      <div class="field-grid">
-        <ChipSelect v-model="ruleToDirect" :options="geoList" :label="$t('setting.toDirect')" :placeholder="$t('ui.selectHint')" />
-        <ChipSelect v-model="ruleToBlock" :options="geoList" :label="$t('setting.toBlock')" :placeholder="$t('ui.selectHint')" />
-      </div>
+      <!-- A folded section is purely presentational. Never bind the native
+           <details> state to enableDns / enableInb / enableLog: those setters
+           modify and may delete the actual JSON configuration. -->
+      <details v-if="enableDns" class="json-compact-fold">
+        <summary class="json-compact-summary">
+          <span class="json-compact-summary-title">{{ $t('ui.dnsOpt') }}</span>
+          <span class="json-compact-preview">{{ $t('dns.final') }}: {{ subJsonExt.dns?.final || '—' }}</span>
+          <Ico name="chevronDown" :size="15" />
+        </summary>
+        <div class="json-compact-body">
+          <div class="field-grid json-compact-fields">
+            <Field :label="$t('dns.final')" :mb="0">
+              <Select v-model="subJsonExt.dns.final">
+                <option v-for="tg in dnsTags" :key="tg" :value="tg">{{ tg }}</option>
+              </Select>
+            </Field>
+            <Field :label="$t('basic.routing.defaultDns')" :mb="0">
+              <Select v-model="defaultResolver">
+                <option value="">{{ $t('ui.none') }}</option>
+                <option v-for="tg in dnsTags" :key="tg" :value="tg">{{ tg }}</option>
+              </Select>
+            </Field>
+          </div>
+          <div class="grid2 json-compact-fields">
+            <Field :label="$t('setting.globalDns')" :mb="0">
+              <div class="json-dns-fields">
+                <div class="json-dns-type">
+                  <Select :model-value="proxyDns.type" @change="setDnsType(proxyDns, $event)">
+                    <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
+                  </Select>
+                </div>
+                <template v-if="proxyDns.type !== 'local'">
+                  <input class="input mono json-dns-address" v-model="proxyDns.server" :placeholder="$t('in.addr')" />
+                  <input class="input mono json-dns-port" type="number" min="1" v-model.number="proxyDns.server_port" :placeholder="$t('in.port')" />
+                </template>
+              </div>
+            </Field>
+            <Field :label="$t('setting.directDns')" :mb="0">
+              <div class="json-dns-fields">
+                <div class="json-dns-type">
+                  <Select :model-value="directDns.type" @change="setDnsType(directDns, $event)">
+                    <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
+                  </Select>
+                </div>
+                <template v-if="directDns.type !== 'local'">
+                  <input class="input mono json-dns-address" v-model="directDns.server" :placeholder="$t('in.addr')" />
+                  <input class="input mono json-dns-port" type="number" min="1" v-model.number="directDns.server_port" :placeholder="$t('in.port')" />
+                </template>
+              </div>
+            </Field>
+          </div>
+          <ChipSelect v-model="dnsToDirect" :options="geositeList" :label="$t('setting.toDirectDns')" :placeholder="$t('ui.selectHint')" />
+        </div>
+      </details>
 
-      <template v-if="enableLog">
-        <div class="sub-label">{{ $t('basic.log.title') }}</div>
-        <div class="field-grid">
-          <Field :label="$t('basic.log.level')" :mb="0">
-            <Select v-model="subJsonExt.log.level">
-              <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
-            </Select>
-          </Field>
-          <div style="display: flex; align-items: flex-end; padding-bottom: 6px;">
+      <details v-if="enableInb" class="json-compact-fold">
+        <summary class="json-compact-summary">
+          <span class="json-compact-summary-title">TUN</span>
+          <span class="json-compact-preview mono">{{ tunAddress || '—' }}</span>
+          <Ico name="chevronDown" :size="15" />
+        </summary>
+        <div class="json-compact-body">
+          <div class="json-tun-grid">
+            <Field :label="$t('in.addr') + ' ' + $t('commaSeparated')" :mb="0">
+              <input class="input mono" v-model="tunAddress" />
+            </Field>
+            <Field :label="$t('ui.mtu')" :mb="0">
+              <input class="input mono" type="number" min="0" v-model.number="subJsonExt.inbounds[0].mtu" />
+            </Field>
+            <div class="json-tun-toggle">
+              <SwitchLabel v-model="platformProxy" :label="$t('ui.platformProxy')" />
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details v-if="enableLog" class="json-compact-fold">
+        <summary class="json-compact-summary">
+          <span class="json-compact-summary-title">{{ $t('basic.log.title') }}</span>
+          <span class="json-compact-preview">{{ subJsonExt.log?.level || '—' }}</span>
+          <Ico name="chevronDown" :size="15" />
+        </summary>
+        <div class="json-compact-body">
+          <div class="json-log-grid">
+            <Field :label="$t('basic.log.level')" :mb="0">
+              <Select v-model="subJsonExt.log.level">
+                <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
+              </Select>
+            </Field>
             <SwitchLabel v-model="subJsonExt.log.timestamp" :label="$t('setting.timestamp')" />
           </div>
         </div>
-      </template>
+      </details>
 
-      <template v-if="enableDns">
-        <div class="sub-label">{{ $t('ui.dnsOpt') }}</div>
-        <div class="field-grid">
-          <Field :label="$t('dns.final')" :mb="0">
-            <Select v-model="subJsonExt.dns.final">
-              <option v-for="tg in dnsTags" :key="tg" :value="tg">{{ tg }}</option>
-            </Select>
-          </Field>
-          <Field :label="$t('basic.routing.defaultDns')" :mb="0">
-            <Select v-model="defaultResolver">
-              <option value="">{{ $t('ui.none') }}</option>
-              <option v-for="tg in dnsTags" :key="tg" :value="tg">{{ tg }}</option>
-            </Select>
-          </Field>
-        </div>
-        <div class="grid2" style="margin-top: 14px;">
-          <Field :label="$t('setting.globalDns')" :mb="0">
-            <div style="display: flex; gap: 8px;">
-              <Select style="flex: 1; min-width: 0;" :model-value="proxyDns.type" @change="setDnsType(proxyDns, $event)">
-                <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
-              </Select>
-              <template v-if="proxyDns.type !== 'local'">
-                <input class="input mono" style="flex: 1.5; min-width: 0;" v-model="proxyDns.server" :placeholder="$t('in.addr')" />
-                <input class="input mono" style="width: 76px; flex: none;" type="number" min="1" v-model.number="proxyDns.server_port" :placeholder="$t('in.port')" />
-              </template>
+      <!-- Manual IDs and GitHub repositories always live in one visual group.
+           The existing TUN exclusion value remains the single editable source
+           of truth for manual IDs; it is not copied to a new setting. -->
+      <section class="json-compact-block json-app-exclusions">
+        <div class="json-compact-heading">{{ $t('setting.packageExcludeTitle') }}</div>
+        <Field :label="$t('setting.packageExcludeManualIDs') + ' ' + $t('commaSeparated')" :mb="0">
+          <input v-if="enableInb" class="input mono" v-model="tunExcludePkg"
+                 placeholder="com.example.app, ru.example.bank" />
+          <Btn v-else sm variant="subtle" @click="enableInb = true">
+            <Ico name="plus" :size="14" /> {{ $t('setting.packageExcludeManualEnableTun') }}
+          </Btn>
+        </Field>
+        <div class="json-app-source-divider"></div>
+        <Field :label="$t('setting.packageExcludeSources')" :mb="0">
+          <div v-for="(source, index) in packageExcludeSources" :key="index" class="json-package-row">
+            <div class="json-package-value">
+              <input class="input mono" dir="ltr" :value="source" @input="editPackageSource(index, $event)"
+                     placeholder="https://raw.githubusercontent.com/owner/repo/main/packages.txt" />
+              <div v-if="packageSourceStatus(source)" class="json-source-status">
+                {{ packageSourceStatus(source).cached }} {{ $t('setting.packageExcludeApplications') }} ·
+                {{ $t('setting.packageExcludeLastCheck') }}: {{ packageExcludeStamp(packageSourceStatus(source).checkedAt) }}
+                <span v-if="packageSourceStatus(source).error" class="json-source-error">
+                  · {{ $t('setting.packageExcludeFailed') }}: {{ packageSourceStatus(source).error }}
+                </span>
+              </div>
             </div>
-          </Field>
-          <Field :label="$t('setting.directDns')" :mb="0">
-            <div style="display: flex; gap: 8px;">
-              <Select style="flex: 1; min-width: 0;" :model-value="directDns.type" @change="setDnsType(directDns, $event)">
-                <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
-              </Select>
-              <template v-if="directDns.type !== 'local'">
-                <input class="input mono" style="flex: 1.5; min-width: 0;" v-model="directDns.server" :placeholder="$t('in.addr')" />
-                <input class="input mono" style="width: 76px; flex: none;" type="number" min="1" v-model.number="directDns.server_port" :placeholder="$t('in.port')" />
-              </template>
-            </div>
-          </Field>
-        </div>
-        <div style="margin-top: 14px;">
-          <ChipSelect v-model="dnsToDirect" :options="geositeList" :label="$t('setting.toDirectDns')" :placeholder="$t('ui.selectHint')" />
-        </div>
-      </template>
-
-      <template v-if="enableInb">
-        <div class="sub-label">{{ $t('objects.inbound') }}</div>
-        <div class="field-grid">
-          <Field :label="$t('in.addr') + ' ' + $t('commaSeparated')" :mb="0">
-            <input class="input mono" v-model="tunAddress" />
-          </Field>
-          <Field :label="$t('ui.mtu')" :mb="0">
-            <input class="input mono" type="number" min="0" v-model.number="subJsonExt.inbounds[0].mtu" />
-          </Field>
-          <Field :label="$t('setting.excludePkg') + ' ' + $t('commaSeparated')" :mb="0">
-            <input class="input mono" v-model="tunExcludePkg" />
-          </Field>
-          <div style="display: flex; align-items: flex-end; padding-bottom: 6px;">
-            <SwitchLabel v-model="platformProxy" :label="$t('ui.platformProxy')" />
+            <Btn sm variant="subtle" @click="removePackageSource(index)" :title="$t('actions.del')">
+              <Ico name="trash" :size="15" />
+            </Btn>
           </div>
+          <Btn sm variant="subtle" @click="addPackageSource">
+            <Ico name="plus" :size="14" /> {{ $t('setting.packageExcludeAddSource') }}
+          </Btn>
+        </Field>
+        <div class="json-package-footer">
+          <Field :label="$t('setting.packageExcludeScheduleDays')" :mb="0" class="json-package-interval">
+            <input class="input mono" type="number" min="0" max="3650" step="1" v-model.number="packageExcludeDays" />
+          </Field>
+          <Btn sm :loading="packageExcludeRefreshing"
+               :disabled="stateChange || !packageExcludeSources.some(s => s.trim()) || packageExcludeRefreshing"
+               @click="refreshPackageExclude()">
+            <Ico name="refresh" :size="14" /> {{ $t('setting.packageExcludeRefresh') }}
+          </Btn>
+          <span v-if="packageExcludeStatus && !stateChange" class="json-package-count">
+            {{ $t('setting.packageExcludePrepared') }}: {{ packageExcludeStatus.prepared }}
+            · {{ $t('setting.packageExcludeConflicts') }}: {{ packageExcludeStatus.conflicts ?? 0 }}
+          </span>
         </div>
-      </template>
+      </section>
 
-      <div class="builder-foot">
+      <div class="builder-foot json-compact-foot">
         <div style="flex: 1;" />
         <Btn sm @click="jsonEditor = true"><Ico name="edit" :size="14" /> {{ $t('editor') }}</Btn>
         <Pop :min-width="220" direction="up">
@@ -401,7 +472,7 @@
 
 <script lang="ts" setup>
 import Select from '@/components/ui/Select.vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import yaml from 'yaml'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
@@ -426,6 +497,63 @@ import CertsPanel from '@/components/settings/CertsPanel.vue'
 import { loadCerts, certsLoaded, findCert, daysLeft } from '@/plugins/certs'
 
 const tab = ref('interface')
+const packageExcludeDays = computed<number>({
+  get: () => Number(settings.value.packageExcludeSchedule) || 0,
+  set: (value) => {
+    if (Number.isFinite(value)) settings.value.packageExcludeSchedule = String(Math.max(0, Math.floor(value)))
+  },
+})
+const packageExcludeSources = computed<string[]>(() => {
+  try {
+    const urls = JSON.parse(settings.value.packageExcludeSources || '[]')
+    if (Array.isArray(urls)) return urls.filter((value: any) => typeof value === 'string')
+  } catch { /* Invalid list is handled by the backend. */ }
+  return []
+})
+const writePackageSources = (items: string[]) => {
+  settings.value.packageExcludeSources = JSON.stringify(items)
+}
+const addPackageSource = () => writePackageSources([...packageExcludeSources.value, ''])
+const removePackageSource = (index: number) => {
+  writePackageSources(packageExcludeSources.value.filter((_, i) => i !== index))
+}
+const editPackageSource = (index: number, event: Event) => {
+  const items = [...packageExcludeSources.value]
+  items[index] = (event.target as HTMLInputElement).value
+  writePackageSources(items)
+}
+const packageExcludeRefreshing = ref(false)
+const packageExcludeStatus = ref<any>(null)
+let packageStatusTimer: ReturnType<typeof setInterval> | undefined
+onUnmounted(() => {
+  if (packageStatusTimer !== undefined) clearInterval(packageStatusTimer)
+})
+const packageExcludeStamp = (v: any): string => {
+  const n = Number(v)
+  return n > 0 ? new Date(n * 1000).toLocaleString() : i18n.global.t('setting.packageExcludeNever')
+}
+const loadPackageExcludeStatus = async () => {
+  const msg = await HttpUtils.get('api/packageExcludeStatus')
+  if (msg.success) packageExcludeStatus.value = msg.obj
+}
+// Show status in the same row as its editable URL, not in a duplicate list.
+// The backend stores github.com/.../blob/... links as raw.githubusercontent.com
+// URLs; match the row the same way so its status shows under either spelling.
+const canonicalPackageUrl = (value: string): string => {
+  const m = value.trim().match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/)
+  return m ? `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}` : value.trim()
+}
+const packageSourceStatus = (url: string): any | undefined =>
+  (packageExcludeStatus.value?.sources || []).find((item: any) => item.url === canonicalPackageUrl(url))
+const refreshPackageExclude = async () => {
+  packageExcludeRefreshing.value = true
+  try {
+    const msg = await HttpUtils.post('api/refreshPackageExcludes', {})
+    if (msg.success) packageExcludeStatus.value = msg.obj
+    else await loadPackageExcludeStatus() // Show each source's failure and last-good state.
+  } finally { packageExcludeRefreshing.value = false }
+}
+
 const loading = ref(false)
 // 保存时要跟当前值逐字段比对,判断反代配置需不需要重新生成(见 save)
 const oldSettings = ref<Record<string, any>>({})
@@ -477,6 +605,8 @@ const settings = ref({
   subRemarkPrefix: "true",
   subURI: "",
   subJsonExt: "",
+  packageExcludeSources: "",
+  packageExcludeSchedule: "0",
   subClashExt: "",
   subClashNoDefGrp: "false",
   subClashSprtAll: "false",
@@ -524,6 +654,10 @@ onMounted(async () => {
   // 触发整个面板重启。
   await loadCerts()
   await loadData()
+  void loadPackageExcludeStatus()
+  packageStatusTimer = setInterval(() => {
+    if (tab.value === 'jsonSub' && !packageExcludeRefreshing.value) void loadPackageExcludeStatus()
+  }, 5000)
   loading.value = false
   // 不 await:它要跑一次 nginx -T,而这只是一条提示,不该让设置页干等着
   void checkProxyDrift()
@@ -751,6 +885,7 @@ const save = async () => {
     })
     // 保存的响应只描述这次写了什么,不再回带整份设置——重新读一次。
     await loadData()
+    void loadPackageExcludeStatus()
   }
   loading.value = false
 }
@@ -1777,6 +1912,98 @@ const saveClashEditor = (data: string) => {
   display: flex; align-items: center; gap: 10px;
   margin-top: 18px; padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+/* JSON subscription: compact, readable on both iPad and narrow phones. */
+.json-compact-block {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 10px;
+  min-width: 0;
+}
+.json-compact-routing { margin-top: 4px; }
+.json-compact-heading {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.json-compact-fields { margin: 0; gap: 10px; }
+.json-compact-fields + .json-compact-fields { margin-top: 10px; }
+.json-compact-fold {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.json-compact-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.json-compact-summary::-webkit-details-marker { display: none; }
+.json-compact-summary::marker { content: ''; }
+.json-compact-summary-title {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.json-compact-preview {
+  font-size: 12px;
+  color: var(--text-3);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-inline-start: auto;
+}
+.json-compact-summary > :last-child { flex: none; transition: transform .18s ease; }
+.json-compact-fold[open] .json-compact-summary > :last-child { transform: rotate(180deg); }
+.json-compact-body {
+  border-top: 1px solid var(--line);
+  padding: 12px 14px 14px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.json-compact-body > * { min-width: 0; }
+.json-dns-fields { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; }
+.json-dns-type { flex: 1 1 110px; min-width: 0; }
+.json-dns-address { flex: 2 1 145px; min-width: 0; }
+.json-dns-port { flex: 0 0 80px; width: 80px; }
+.json-tun-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(95px, .7fr) auto; gap: 12px; align-items: end; }
+.json-tun-toggle { padding-bottom: 7px; }
+.json-log-grid { display: grid; grid-template-columns: minmax(0, 240px) 1fr; gap: 14px; align-items: end; }
+.json-log-grid > :last-child { padding-bottom: 7px; }
+.json-app-exclusions { margin-top: 10px; }
+.json-app-source-divider { border-top: 1px solid var(--line); margin: 12px 0; }
+.json-package-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.json-package-value { flex: 1; min-width: 0; }
+.json-package-value > input { width: 100%; min-width: 0; }
+.json-source-status { font-size: 11.5px; color: var(--text-3); margin-top: 4px; overflow-wrap: anywhere; }
+.json-source-error { color: var(--red); }
+.json-package-footer { display: flex; align-items: end; flex-wrap: wrap; gap: 10px 12px; margin-top: 12px; }
+.json-package-interval { flex: 0 0 140px; }
+.json-package-interval input { width: 100%; }
+.json-package-count { font-size: 12px; color: var(--text-3); padding-bottom: 7px; }
+.json-compact-foot { margin-top: 10px; padding-top: 10px; }
+@media (max-width: 780px) {
+  .json-tun-grid { grid-template-columns: minmax(0, 1fr) minmax(95px, .35fr); }
+  .json-tun-toggle { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
+  .json-compact-block { padding: 10px; }
+  .json-compact-summary { padding: 10px; }
+  .json-compact-body { padding: 10px; }
+  .json-tun-grid, .json-log-grid { grid-template-columns: minmax(0, 1fr); }
+  .json-tun-toggle { grid-column: auto; }
+  .json-package-interval { flex-basis: 110px; }
+  .json-package-count { width: 100%; padding-bottom: 0; }
 }
 
 /* 通知：分组标题在双列网格里独占一行，上方留白把它和上一组分开 */
