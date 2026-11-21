@@ -27,7 +27,9 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Compare native sing-box sources
-        run: bash scripts/check-protocol-copies.sh
+        run: |
+          set -o pipefail
+          bash scripts/check-protocol-copies.sh | sed 's/: ok$/ [OK]/'
       - name: Static checks
         run: |
           test -z "$(gofmt -l service/packageExclude*.go cronjob/packageExcludeJob.go)"
