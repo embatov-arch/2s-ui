@@ -1,17 +1,18 @@
 <template>
   <Modal :open="open" :title="title" :width="760" @close="$emit('close')">
     <div style="display: flex; flex-direction: column; flex: 1;">
+      <slot name="before" />
       <textarea
-        ref="ta"
         class="input mono editor-area"
         spellcheck="false"
-        :value="draft"
-        @input="draft = ($event.target as HTMLTextAreaElement).value"
+        :value="controlled ? content : draft"
+        @input="onInput(($event.target as HTMLTextAreaElement).value)"
       />
+      <slot name="after" />
     </div>
     <template #footer>
       <Btn sm @click="$emit('close')">{{ $t('ui.cancel') }}</Btn>
-      <Btn variant="primary" sm @click="$emit('save', draft); $emit('close')">{{ $t('actions.save') }}</Btn>
+      <Btn variant="primary" sm @click="save">{{ $t('actions.save') }}</Btn>
     </template>
   </Modal>
 </template>
@@ -25,11 +26,21 @@ const props = defineProps<{
   open: boolean
   title: string
   content: string
+  controlled?: boolean
+  keepOpenOnSave?: boolean
 }>()
-defineEmits<{ close: []; save: [value: string] }>()
+const emit = defineEmits<{ close: []; save: [value: string]; 'update:content': [value: string] }>()
 
 const draft = ref('')
-watch(() => props.open, (v) => { if (v) draft.value = props.content })
+watch(() => props.open, (v) => { if (v && !props.controlled) draft.value = props.content }, { immediate: true })
+const onInput = (value: string) => {
+  if (props.controlled) emit('update:content', value)
+  else draft.value = value
+}
+const save = () => {
+  emit('save', props.controlled ? props.content : draft.value)
+  if (!props.keepOpenOnSave) emit('close')
+}
 </script>
 
 <style scoped>

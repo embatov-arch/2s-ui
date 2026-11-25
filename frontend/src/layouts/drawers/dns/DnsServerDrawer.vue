@@ -148,7 +148,7 @@ import Dial from '@/components/forms/out/Dial.vue'
 import OutTLS from '@/components/forms/out/OutTLS.vue'
 import RandomUtil from '@/plugins/randomUtil'
 import { dnsColor } from '@/plugins/colors'
-import { DnsTypes, createDnsServer, DnsServer } from '@/types/dns'
+import { DnsTypes, createDnsServer, DnsServer, dnsServerTypeOptions, dnsServerTypesWithAddress } from '@/types/dns'
 
 const props = defineProps<{
   open: boolean
@@ -162,8 +162,8 @@ defineEmits<{ close: []; save: [data: any] }>()
 
 const isNew = computed(() => props.index === -1)
 
-const dnsTypes = Object.keys(DnsTypes).map((key, index) => ({ title: key, value: Object.values(DnsTypes)[index] }))
-const HasServer: string[] = [DnsTypes.TCP, DnsTypes.UDP, DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3]
+const dnsTypes = dnsServerTypeOptions
+const HasServer = dnsServerTypesWithAddress
 const HasHeaders: string[] = [DnsTypes.HTTPS, DnsTypes.HTTP3]
 const HasTls: string[] = [DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3]
 // Neither dials out itself: both read what their endpoint was handed.

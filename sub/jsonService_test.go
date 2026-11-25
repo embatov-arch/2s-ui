@@ -896,7 +896,9 @@ func TestFallbackDomainResolver(t *testing.T) {
 		"single server needs no choice": {`{"dns": {"servers": [
 			{"tag": "a", "type": "local"}
 		], "final": "a"}}`, ""},
-		"no dns section": {`{}`, ""},
+		"implicit first DNS tag": {`{"dns":{"servers":[{"type":"local"},{"type":"https","server":"1.1.1.1"}]}}`, "0"},
+		"empty first DNS tag":    {`{"dns":{"servers":[{"tag":"","type":"local"},{"type":"local"}]}}`, "0"},
+		"no dns section":         {`{}`, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var othersJson map[string]interface{}

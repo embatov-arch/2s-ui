@@ -39,6 +39,10 @@ export const DnsTypes = {
 }
 
 export type DnsType = typeof DnsTypes[keyof typeof DnsTypes]
+export const dnsServerTypeOptions = Object.entries(DnsTypes).map(([title, value]) => ({ title, value }))
+export const dnsServerTypesWithAddress: readonly string[] = [
+  DnsTypes.TCP, DnsTypes.UDP, DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3,
+]
 
 type InterfaceMap = {
   [Key in keyof typeof DnsTypes]: {
