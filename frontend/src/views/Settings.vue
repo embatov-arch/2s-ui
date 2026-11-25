@@ -143,13 +143,27 @@
       <Btn sm @click="jsonEditor = true"><Ico name="edit" :size="14" /> {{ $t('editor') }}</Btn>
     </SettingsGroup>
     <SettingsGroup v-else-if="tab === 'jsonSub'">
-      <div class="json-compact-section json-compact-rules" :title="$t('ui.jsonExtDesc')">
-        <div class="json-compact-heading">{{ $t('pages.rules') }}</div>
+      <div style="font-size: 12.5px; color: var(--text-3); padding: 12px 0 14px;">{{ $t('ui.jsonExtDesc') }}</div>
+
       <div class="field-grid">
         <ChipSelect v-model="ruleToDirect" :options="geoList" :label="$t('setting.toDirect')" :placeholder="$t('ui.selectHint')" />
         <ChipSelect v-model="ruleToBlock" :options="geoList" :label="$t('setting.toBlock')" :placeholder="$t('ui.selectHint')" />
       </div>
-      </div>
+
+      <template v-if="enableLog">
+        <div class="sub-label">{{ $t('basic.log.title') }}</div>
+        <div class="field-grid">
+          <Field :label="$t('basic.log.level')" :mb="0">
+            <Select v-model="subJsonExt.log.level">
+              <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
+            </Select>
+          </Field>
+          <div style="display: flex; align-items: flex-end; padding-bottom: 6px;">
+            <SwitchLabel v-model="subJsonExt.log.timestamp" :label="$t('setting.timestamp')" />
+          </div>
+        </div>
+      </template>
+
       <details v-if="enableDns" class="json-compact-section">
         <summary class="json-compact-head">
           <span>{{ $t('ui.dnsOpt') }}</span>
@@ -160,13 +174,9 @@
           <SubscriptionDns v-model:config="subJsonExt" :catalog="geo" :catalog-options="geoList" />
         </div>
       </details>
-      <details v-if="enableInb" class="json-compact-section">
-        <summary class="json-compact-head">
-          <span>TUN</span>
-          <span class="json-compact-value mono">{{ tunAddress || '—' }}</span>
-          <Ico name="chevronDown" :size="14" class="json-compact-chevron" />
-        </summary>
-        <div class="json-compact-content">
+
+      <template v-if="enableInb">
+        <div class="sub-label">{{ $t('objects.inbound') }}</div>
         <div class="field-grid">
           <Field :label="$t('in.addr') + ' ' + $t('commaSeparated')" :mb="0">
             <input class="input mono" v-model="tunAddress" />
@@ -181,33 +191,14 @@
             <SwitchLabel v-model="platformProxy" :label="$t('ui.platformProxy')" />
           </div>
         </div>
-        </div>
-      </details>
-      <details v-if="enableLog" class="json-compact-section">
-        <summary class="json-compact-head">
-          <span>{{ $t('basic.log.title') }}</span>
-          <span class="json-compact-value">{{ subJsonExt.log.level || '—' }}</span>
-          <Ico name="chevronDown" :size="14" class="json-compact-chevron" />
-        </summary>
-        <div class="json-compact-content">
-        <div class="field-grid">
-          <Field :label="$t('basic.log.level')" :mb="0">
-            <Select v-model="subJsonExt.log.level">
-              <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
-            </Select>
-          </Field>
-          <div style="display: flex; align-items: flex-end; padding-bottom: 6px;">
-            <SwitchLabel v-model="subJsonExt.log.timestamp" :label="$t('setting.timestamp')" />
-          </div>
-        </div>
-        </div>
-      </details>
+      </template>
+
       <div class="builder-foot">
         <div style="flex: 1;" />
         <Btn sm @click="jsonEditor = true"><Ico name="edit" :size="14" /> {{ $t('editor') }}</Btn>
         <Pop :min-width="220" direction="up">
           <template #trigger="{ toggle }">
-            <Btn variant="ghost" sm @click="toggle">{{ $t('setting.jsonSubOptions') }} <Ico name="chevronDown" :size="14" /></Btn>
+            <Btn variant="subtle" sm @click="toggle">{{ $t('setting.jsonSubOptions') }} <Ico name="chevronDown" :size="14" /></Btn>
           </template>
           <label class="pop-item" @click.prevent="enableLog = !enableLog"><Toggle :model-value="enableLog" style="pointer-events: none;" /> {{ $t('basic.log.title') }}</label>
           <label class="pop-item" @click.prevent="enableDns = !enableDns"><Toggle :model-value="enableDns" style="pointer-events: none;" /> {{ $t('ui.dnsOpt') }}</label>
@@ -1659,7 +1650,6 @@ const saveClashEditor = (data: string) => {
 
 <style scoped>
 .json-compact-section { margin-top: 8px; border: 1px solid var(--line); border-radius: 12px; }
-.json-compact-rules { padding: 12px 14px; margin-top: 4px; }
 .json-compact-head { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 10px 14px; cursor: pointer; list-style: none; font-size: 13px; font-weight: 600; color: var(--text); }
 .json-compact-head::-webkit-details-marker { display: none; }
 .json-compact-head:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; border-radius: 12px; }
@@ -1667,7 +1657,6 @@ const saveClashEditor = (data: string) => {
 .json-compact-chevron { flex: none; color: var(--text-2); }
 .json-compact-section[open] .json-compact-chevron { transform: rotate(180deg); }
 .json-compact-content { padding: 0 14px 14px; }
-.json-compact-heading { font-size: 13px; font-weight: 600; color: var(--text-2); margin-bottom: 10px; }
 
 .head-row {
   display: flex; align-items: center; gap: 8px;
