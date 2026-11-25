@@ -22,41 +22,40 @@
           <option v-for="strategy in strategies" :key="strategy" :value="strategy">{{ strategy }}</option>
         </Select>
       </Field>
-      <div class="dns-toolbar"><Btn sm :disabled="!!draft || !!pending" @click="openItem('advanced', -1)"><Ico name="edit" :size="14" /> {{ $t('subscriptionDns.advanced') }}</Btn></div>
     </div>
     <div class="dns-list-wrap">
     <details class="dns-list" open>
-      <summary><Ico name="chevronDown" :size="13" class="dns-chevron" /><strong>{{ $t('ui.dnsServers') }}</strong><span class="dns-count">{{ servers.length }}</span></summary>
+      <summary><Ico name="chevronDown" :size="16" class="dns-chevron" /><strong>{{ $t('ui.dnsServers') }}</strong><span class="dns-count">{{ servers.length }}</span></summary>
       <div class="dns-list-body">
         <div v-for="(server, i) in servers" :key="i" class="sub-dns-row">
           <button type="button" class="sub-dns-desc" :disabled="!!draft || !!pending" :title="`${server.tag || '#' + (i + 1)} · ${server.type || $t('subscriptionDns.legacy')} · ${server.server || '—'}`" @click="openItem('server', i)">
             <strong>{{ server.tag || '#' + (i + 1) }}</strong><span class="mono">{{ server.type || $t('subscriptionDns.legacy') }}<template v-if="server.server"> · {{ server.server }}<template v-if="server.server_port">:{{ server.server_port }}</template></template></span>
-            <Ico name="edit" :size="13" class="dns-row-edit" />
+            <Ico name="edit" :size="16" class="dns-row-edit" />
           </button>
-          <button type="button" class="dns-icon dns-delete" :aria-label="$t('actions.del')" :title="$t('actions.del')" :disabled="!!draft || !!pending" @click="askRemove('server', i)"><Ico name="trash" :size="14" /></button>
+          <Btn sm icon variant="subtle" class="dns-icon dns-delete" :aria-label="$t('actions.del')" :title="$t('actions.del')" :disabled="!!draft || !!pending" @click="askRemove('server', i)"><Ico name="trash" :size="16" /></Btn>
         </div>
       </div>
     </details>
-      <button type="button" class="dns-icon dns-add" :aria-label="$t('ui.addDnsServer')" :title="$t('ui.addDnsServer')" :disabled="!!draft || !!pending" @click="openNewServer"><Ico name="plus" :size="16" /></button>
+      <Btn sm icon variant="subtle" class="dns-icon dns-add" :aria-label="$t('ui.addDnsServer')" :title="$t('ui.addDnsServer')" :disabled="!!draft || !!pending" @click="openNewServer"><Ico name="plus" :size="16" /></Btn>
     </div>
     <div class="dns-list-wrap">
     <details class="dns-list" open>
-      <summary><Ico name="chevronDown" :size="13" class="dns-chevron" /><strong>{{ $t('ui.dnsRules') }}</strong><span class="dns-count">{{ rules.length }}</span></summary>
+      <summary><Ico name="chevronDown" :size="16" class="dns-chevron" /><strong>{{ $t('ui.dnsRules') }}</strong><span class="dns-count">{{ rules.length }}</span></summary>
       <div class="dns-list-body">
         <div v-for="(rule, i) in rules" :key="i" class="sub-dns-row">
           <button type="button" class="sub-dns-desc" :title="ruleSummary(rule)" :disabled="!!draft || !!pending" @click="openItem('rule', i)">
             <span class="dns-num">{{ i + 1 }}.</span><strong>{{ rule.action || 'route' }}<template v-if="rule.server"> → {{ rule.server }}</template></strong><span class="mono">{{ ruleSummary(rule) }}</span>
-            <Ico name="edit" :size="13" class="dns-row-edit" />
+            <Ico name="edit" :size="16" class="dns-row-edit" />
           </button>
-          <button type="button" class="dns-icon" :aria-label="$t('subscriptionDns.up') + ' ' + (i + 1)" :title="$t('subscriptionDns.up')" :disabled="!!draft || !!pending || i === 0" @click="move(i, -1)"><Ico name="chevronDown" :size="14" style="transform:rotate(180deg)" /></button>
-          <button type="button" class="dns-icon" :aria-label="$t('subscriptionDns.down') + ' ' + (i + 1)" :title="$t('subscriptionDns.down')" :disabled="!!draft || !!pending || i === rules.length - 1" @click="move(i, 1)"><Ico name="chevronDown" :size="14" /></button>
-          <button type="button" class="dns-icon dns-delete" :aria-label="$t('actions.del')" :title="$t('actions.del')" :disabled="!!draft || !!pending" @click="askRemove('rule', i)"><Ico name="trash" :size="14" /></button>
+          <Btn sm icon variant="subtle" class="dns-icon" :aria-label="$t('subscriptionDns.up') + ' ' + (i + 1)" :title="$t('subscriptionDns.up')" :disabled="!!draft || !!pending || i === 0" @click="move(i, -1)"><Ico name="chevronDown" :size="16" style="transform:rotate(180deg)" /></Btn>
+          <Btn sm icon variant="subtle" class="dns-icon" :aria-label="$t('subscriptionDns.down') + ' ' + (i + 1)" :title="$t('subscriptionDns.down')" :disabled="!!draft || !!pending || i === rules.length - 1" @click="move(i, 1)"><Ico name="chevronDown" :size="16" /></Btn>
+          <Btn sm icon variant="subtle" class="dns-icon dns-delete" :aria-label="$t('actions.del')" :title="$t('actions.del')" :disabled="!!draft || !!pending" @click="askRemove('rule', i)"><Ico name="trash" :size="16" /></Btn>
         </div>
       </div>
     </details>
-      <button type="button" class="dns-icon dns-add" :aria-label="$t('ui.addDnsRule')" :title="$t('ui.addDnsRule')" :disabled="!!draft || !!pending" @click="openItem('rule', -1)"><Ico name="plus" :size="16" /></button>
+      <Btn sm icon variant="subtle" class="dns-icon dns-add" :aria-label="$t('ui.addDnsRule')" :title="$t('ui.addDnsRule')" :disabled="!!draft || !!pending" @click="openItem('rule', -1)"><Ico name="plus" :size="16" /></Btn>
     </div>
-    <Modal :open="!!draft" :title="(draft?.kind === 'server' ? $t('subscriptionDns.editServer') : draft?.kind === 'rule' ? $t('subscriptionDns.editRule') : $t('ui.dnsOpt')) + ' · JSON'" :width="680" @close="draft = null; error = ''">
+    <Modal :open="!!draft" :title="(draft?.kind === 'server' ? $t('subscriptionDns.editServer') : $t('subscriptionDns.editRule')) + ' · JSON'" :width="680" @close="draft = null; error = ''">
       <div v-if="draft" class="sub-dns-draft">
       <template v-if="draft.kind === 'server' && draft.index === -1">
         <Field :label="$t('type')"><Select :model-value="draftType" @change="newServerType"><option v-for="t in types" :key="t" :value="t">{{ t }}</option></Select></Field>
@@ -104,7 +103,7 @@ const strategies = ['prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only']
 const types = Object.values(DnsTypes)
 const networkTypes = ['tcp', 'udp', 'tls', 'quic', 'https', 'h3']
 const error = ref('')
-const draft = ref<{ kind: 'server'|'rule'|'advanced'; index: number; text: string } | null>(null)
+const draft = ref<{ kind: 'server'|'rule'; index: number; text: string } | null>(null)
 const pending = ref<{ kind: 'server'|'rule'; index: number } | null>(null)
 const draftType = ref('local')
 const parsed = computed(() => { try { const v = JSON.parse(draft.value?.text ?? ''); return isObject(v) ? v : null } catch { return null } })
@@ -118,10 +117,9 @@ const changeResolver = (tag: string) => { commit(t => setResolver(t, tag)) }
 const changeStrategy = (strategy: string) => { commit(t => { if (strategy) t.dns.strategy = strategy; else delete t.dns.strategy }) }
 const writeDraft = (v: any) => { if (draft.value) draft.value.text = JSON.stringify(v, null, 2) }
 const newTag = () => { let i = 1; while (tags.value.includes('dns-' + i)) i++; return 'dns-' + i }
-const openItem = (kind: 'server'|'rule'|'advanced', index: number) => {
+const openItem = (kind: 'server'|'rule', index: number) => {
   error.value = ''; pending.value = null
-  const obj = kind === 'advanced' ? { dns: dns.value, ...(props.config.default_domain_resolver !== undefined ? { default_domain_resolver: props.config.default_domain_resolver } : {}) }
-    : kind === 'server' ? (index < 0 ? createDnsServer('local', { tag: newTag() }) : servers.value[index])
+  const obj = kind === 'server' ? (index < 0 ? createDnsServer('local', { tag: newTag() }) : servers.value[index])
     : (index < 0 ? { action: 'route', server: '' } : rules.value[index])
   draft.value = { kind, index, text: JSON.stringify(obj, null, 2) }
 }
@@ -140,15 +138,9 @@ const saveDraft = () => {
     const value: unknown = JSON.parse(d.text)
     if (!isObject(value)) throw new Error(translate('subscriptionDns.invalidJson'))
     if (commit(t => {
-      if (d.kind === 'advanced') {
-        if (!isObject(value.dns) || Object.keys(value).some(k => !['dns', 'default_domain_resolver'].includes(k))) throw new Error(translate('subscriptionDns.advancedShape'))
-        t.dns = value.dns
-        if ('default_domain_resolver' in value) t.default_domain_resolver = value.default_domain_resolver; else delete t.default_domain_resolver
-      } else {
-        const key = d.kind === 'server' ? 'servers' : 'rules'
-        const items = t.dns[key] ??= []
-        if (d.index === -1) items.push(value); else items[d.index] = value
-      }
+      const key = d.kind === 'server' ? 'servers' : 'rules'
+      const items = t.dns[key] ??= []
+      if (d.index === -1) items.push(value); else items[d.index] = value
     })) draft.value = null
   } catch (e) { error.value = String(e) }
 }
@@ -157,29 +149,28 @@ watch(() => props.config, () => { draft.value = null; pending.value = null })
 </script>
 <style scoped>
 .sub-dns { display:flex; flex-direction:column; gap:5px; }
-.dns-basics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) auto; gap:6px; align-items:end; }
-.dns-toolbar { display:flex; justify-content:flex-end; }
+.dns-basics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; align-items:end; }
 .dns-list-wrap { position:relative; min-width:0; }
 .dns-list { border-top:1px solid var(--line); min-width:0; }
-.dns-add { position:absolute; right:0; top:2px; }
-.dns-list summary { display:flex; align-items:center; gap:6px; cursor:pointer; min-height:30px; list-style:none; font-size:12px; padding-right:34px; }
+.dns-add { position:absolute; inset-inline-end:0; top:1px; }
+.dns-list summary { display:flex; align-items:center; gap:6px; cursor:pointer; min-height:34px; list-style:none; font-size:13px; padding-inline-end:36px; }
 .dns-list summary::-webkit-details-marker { display:none; }
 .dns-chevron { transition:transform .15s; transform:rotate(-90deg); }
 .dns-list[open] > summary .dns-chevron { transform:rotate(0); }
 .dns-count { color:var(--text-3); font-size:11px; }
 .dns-list-body { display:flex; flex-direction:column; gap:0; }
 
-.sub-dns-row { display:flex; align-items:center; gap:3px; min-height:30px; padding:1px 0; border-bottom:1px solid var(--line); }
-.sub-dns-desc { flex:1 1 0; min-width:0; display:flex; align-items:baseline; gap:6px; background:transparent; border:0; text-align:left; color:inherit; cursor:pointer; padding:4px 0; font:inherit; }
-.sub-dns-desc strong { font-size:12px; flex:0 1 auto; min-width:0; max-width:65%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sub-dns-desc span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--text-3); }
+.sub-dns-row { display:flex; align-items:center; gap:2px; min-height:34px; padding:0; border-bottom:1px solid var(--line); }
+.sub-dns-desc { flex:1 1 0; min-width:0; display:flex; align-items:baseline; gap:6px; background:transparent; border:0; text-align:start; color:inherit; cursor:pointer; padding:4px 0; font:inherit; }
+.sub-dns-desc strong { font-size:13px; font-weight:600; flex:0 0 auto; min-width:0; max-width:65%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sub-dns-desc span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--text-2); }
 .sub-dns-desc .dns-num { flex:0 0 auto; }
-.dns-row-edit { flex:0 0 auto; margin-left:auto; color:var(--text-2); }
-.dns-icon { display:inline-flex; justify-content:center; align-items:center; flex:0 0 28px; height:28px; padding:0; border:0; border-radius:4px; background:transparent; color:var(--text-2); cursor:pointer; }
-.dns-icon:hover:not(:disabled), .sub-dns-desc:hover:not(:disabled) { background:var(--surface-3); }
-.dns-icon:disabled { opacity:.35; cursor:default; }
+.dns-row-edit { flex:0 0 auto; margin-inline-start:auto; color:var(--text-2); }
+.dns-icon { flex:none; }
+.sub-dns-desc:hover:not(:disabled) { background:var(--surface-3); }
+.sub-dns-desc .mono { flex:1 1 0; }
 .dns-delete { color:var(--rose); }
-.dns-icon:focus-visible, .sub-dns-desc:focus-visible, summary:focus-visible { outline:2px solid var(--emerald); outline-offset:1px; }
+.dns-icon:focus-visible, .sub-dns-desc:focus-visible, summary:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
 .sub-dns-head { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
 .sub-dns-head span { flex:1; }
 .sub-dns-draft { padding:12px; display:flex; flex-direction:column; gap:6px; }
@@ -187,11 +178,9 @@ watch(() => props.config, () => { draft.value = null; pending.value = null })
 .dns-error { color:var(--rose); overflow-wrap:anywhere; font-size:12px; }
 @media(max-width:640px) {
  .dns-basics { grid-template-columns:repeat(2,minmax(0,1fr)); }
- .dns-toolbar { justify-content:flex-end; }
  .sub-dns-desc { flex-wrap:wrap; gap:0 5px; }
  .sub-dns-desc strong { max-width:100%; }
  .sub-dns-desc .mono { flex:1 1 75%; }
  .dns-row-edit { align-self:center; }
- .dns-icon { flex-basis:32px; height:32px; }
 }
 </style>
