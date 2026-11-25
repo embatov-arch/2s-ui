@@ -1,17 +1,19 @@
 <template>
-  <Modal :open="open" :title="title" :width="760" @close="$emit('close')">
+  <Modal :open="open" :title="title" :width="width ?? 760" @close="$emit('close')">
     <div style="display: flex; flex-direction: column; flex: 1;">
+      <slot name="before" />
       <textarea
-        ref="ta"
         class="input mono editor-area"
         spellcheck="false"
-        :value="draft"
-        @input="draft = ($event.target as HTMLTextAreaElement).value"
+        :class="{ 'editor-area-compact': compact }"
+        :value="controlled ? content : draft"
+        @input="onInput(($event.target as HTMLTextAreaElement).value)"
       />
+      <slot name="after" />
     </div>
     <template #footer>
       <Btn sm @click="$emit('close')">{{ $t('ui.cancel') }}</Btn>
-      <Btn variant="primary" sm @click="$emit('save', draft); $emit('close')">{{ $t('actions.save') }}</Btn>
+      <Btn variant="primary" sm @click="save">{{ $t('actions.save') }}</Btn>
     </template>
   </Modal>
 </template>
@@ -25,11 +27,23 @@ const props = defineProps<{
   open: boolean
   title: string
   content: string
+  controlled?: boolean
+  keepOpenOnSave?: boolean
+  compact?: boolean
+  width?: number
 }>()
-defineEmits<{ close: []; save: [value: string] }>()
+const emit = defineEmits<{ close: []; save: [value: string]; 'update:content': [value: string] }>()
 
 const draft = ref('')
-watch(() => props.open, (v) => { if (v) draft.value = props.content })
+watch(() => props.open, (v) => { if (v && !props.controlled) draft.value = props.content }, { immediate: true })
+const onInput = (value: string) => {
+  if (props.controlled) emit('update:content', value)
+  else draft.value = value
+}
+const save = () => {
+  emit('save', props.controlled ? props.content : draft.value)
+  if (!props.keepOpenOnSave) emit('close')
+}
 </script>
 
 <style scoped>
@@ -44,4 +58,6 @@ watch(() => props.open, (v) => { if (v) draft.value = props.content })
   background: var(--surface-3);
 }
 .editor-area:focus { box-shadow: none; border: none; background: var(--surface-3); }
+.editor-area-compact { min-height: 180px; width: auto; margin: 0 12px 12px; border: 1px solid var(--line); border-radius: var(--radius-xs); }
+.editor-area-compact:focus { border: 1px solid var(--brand); }
 </style>

@@ -1,21 +1,21 @@
 <template>
   <div class="sub-dns">
     <div class="dns-basics">
-      <Field :label="$t('subscriptionDns.final')" :mb="0">
+      <Field :label="$t('dns.final')" :mb="0">
         <Select :disabled="!!draft || !!pending" :model-value="dns.final ?? ''" @change="changeFinal">
-          <option value="">{{ $t('subscriptionDns.first') }}</option>
+          <option value="">{{ $t('ui.firstServer') }}</option>
           <option v-if="dns.final && !tags.includes(dns.final)" :value="dns.final">{{ dns.final }} (!)</option>
           <option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option>
         </Select>
       </Field>
-      <Field :label="$t('subscriptionDns.resolver')" :mb="0">
+      <Field :label="$t('basic.routing.defaultDns')" :mb="0">
         <Select :disabled="!!draft || !!pending" :model-value="resolver" @change="changeResolver">
           <option value="">{{ $t('subscriptionDns.automatic') }}</option>
           <option v-if="resolver && !tags.includes(resolver)" :value="resolver">{{ resolver }} (!)</option>
           <option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option>
         </Select>
       </Field>
-      <Field :label="$t('subscriptionDns.strategy')" :mb="0">
+      <Field :label="$t('ui.domainStrategy')" :mb="0">
         <Select :disabled="!!draft || !!pending" :model-value="dns.strategy ?? ''" @change="changeStrategy">
           <option value="">{{ $t('ui.none') }}</option>
           <option v-if="dns.strategy && !strategies.includes(dns.strategy)" :value="dns.strategy">{{ dns.strategy }}</option>
@@ -28,7 +28,7 @@
       <summary><Ico name="chevronDown" :size="16" class="dns-chevron" /><strong>{{ $t('ui.dnsServers') }}</strong><span class="dns-count">{{ servers.length }}</span></summary>
       <div class="dns-list-body">
         <div v-for="(server, i) in servers" :key="i" class="sub-dns-row">
-          <button type="button" class="sub-dns-desc" :disabled="!!draft || !!pending" :title="`${server.tag || '#' + (i + 1)} · ${server.type || $t('subscriptionDns.legacy')} · ${server.server || '—'}`" @click="openItem('server', i)">
+          <button type="button" class="sub-dns-desc" :aria-label="$t('actions.edit') + ' ' + (server.tag || '#' + (i + 1))" :disabled="!!draft || !!pending" :title="`${server.tag || '#' + (i + 1)} · ${server.type || $t('subscriptionDns.legacy')} · ${server.server || '—'}`" @click="openItem('server', i)">
             <strong>{{ server.tag || '#' + (i + 1) }}</strong><span class="mono">{{ server.type || $t('subscriptionDns.legacy') }}<template v-if="server.server"> · {{ server.server }}<template v-if="server.server_port">:{{ server.server_port }}</template></template></span>
             <Ico name="edit" :size="16" class="dns-row-edit" />
           </button>
@@ -43,7 +43,7 @@
       <summary><Ico name="chevronDown" :size="16" class="dns-chevron" /><strong>{{ $t('ui.dnsRules') }}</strong><span class="dns-count">{{ rules.length }}</span></summary>
       <div class="dns-list-body">
         <div v-for="(rule, i) in rules" :key="i" class="sub-dns-row">
-          <button type="button" class="sub-dns-desc" :title="ruleSummary(rule)" :disabled="!!draft || !!pending" @click="openItem('rule', i)">
+          <button type="button" class="sub-dns-desc" :aria-label="$t('actions.edit') + ' ' + $t('objects.dnsrule') + ' #' + (i + 1)" :title="ruleSummary(rule)" :disabled="!!draft || !!pending" @click="openItem('rule', i)">
             <span class="dns-num">{{ i + 1 }}.</span><strong>{{ rule.action || 'route' }}<template v-if="rule.server"> → {{ rule.server }}</template></strong><span class="mono">{{ ruleSummary(rule) }}</span>
             <Ico name="edit" :size="16" class="dns-row-edit" />
           </button>
@@ -55,28 +55,39 @@
     </details>
       <Btn sm icon variant="subtle" class="dns-icon dns-add" :aria-label="$t('ui.addDnsRule')" :title="$t('ui.addDnsRule')" :disabled="!!draft || !!pending" @click="openItem('rule', -1)"><Ico name="plus" :size="16" /></Btn>
     </div>
-    <Modal :open="!!draft" :title="(draft?.kind === 'server' ? $t('subscriptionDns.editServer') : $t('subscriptionDns.editRule')) + ' · JSON'" :width="680" @close="draft = null; error = ''">
-      <div v-if="draft" class="sub-dns-draft">
-      <template v-if="draft.kind === 'server' && draft.index === -1">
-        <Field :label="$t('type')"><Select :model-value="draftType" @change="newServerType"><option v-for="t in types" :key="t" :value="t">{{ t }}</option></Select></Field>
-      </template>
-      <template v-if="draft.kind === 'server' && parsed && networkTypes.includes(parsed.type)">
-        <div class="field-grid">
-          <Field :label="$t('dns.server')"><input class="input mono" :value="parsed.server ?? ''" @change="patchText('server', ($event.target as HTMLInputElement).value)" /></Field>
-          <Field :label="$t('in.port')"><input class="input mono" type="number" min="1" max="65535" :value="parsed.server_port ?? ''" @change="patchPort(($event.target as HTMLInputElement).value)" /></Field>
+    <EditorModal
+      :open="!!draft"
+      :title="draftTitle"
+      :content="draft?.text ?? ''"
+      :width="680"
+      compact controlled keep-open-on-save
+      @update:content="setDraftText"
+      @save="saveDraft"
+      @close="draft = null; error = ''"
+    >
+      <template #before>
+        <div v-if="draft" class="sub-dns-draft">
+          <template v-if="draft.kind === 'server' && draft.index === -1">
+            <Field :label="$t('type')"><Select :disabled="!parsed" :model-value="parsed?.type ?? ''" @change="newServerType"><option v-for="t in dnsServerTypeOptions" :key="t.value" :value="t.value">{{ t.title }}</option></Select></Field>
+          </template>
+          <template v-if="draft.kind === 'server' && parsed && dnsServerTypesWithAddress.includes(parsed.type)">
+            <div class="field-grid">
+              <Field :label="$t('dns.server')"><input class="input mono" :value="parsed.server ?? ''" @change="patchText('server', ($event.target as HTMLInputElement).value)" /></Field>
+              <Field :label="$t('in.port')"><input class="input mono" type="number" min="1" max="65535" :value="parsed.server_port ?? ''" @change="patchPort(($event.target as HTMLInputElement).value)" /></Field>
+            </div>
+          </template>
+          <template v-if="draft.kind === 'rule' && parsed">
+            <Field v-if="!parsed.action || parsed.action === 'route' || parsed.action === 'evaluate'" :label="$t('dns.server')"><Select :model-value="parsed.server ?? ''" @change="patchText('server', $event)"><option value="">—</option><option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option></Select></Field>
+            <ChipSelect v-if="parsed.type !== 'logical'" :model-value="refs(parsed.rule_set)" :options="ruleOptions" label="rule_set" :placeholder="$t('ui.selectHint')" @update:model-value="patchSets" />
+          </template>
+          <p v-if="draft.kind === 'rule' && draft.index === -1" class="dns-hint">{{ $t('subscriptionDns.ruleHelp') }}</p>
         </div>
       </template>
-      <template v-if="draft.kind === 'rule' && parsed && (parsed.action === 'route' || parsed.action === 'evaluate')">
-        <Field :label="$t('dns.server')"><Select :model-value="parsed.server ?? ''" @change="patchText('server', $event)"><option value="">—</option><option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option></Select></Field>
-        <ChipSelect v-if="parsed.type !== 'logical'" :model-value="refs(parsed.rule_set)" :options="ruleOptions" label="rule_set" :placeholder="$t('ui.selectHint')" @update:model-value="patchSets" />
+      <template #after>
+        <div v-if="error" role="alert" class="dns-error dns-draft-error">{{ $t('subscriptionDns.invalid') }}: {{ error }}</div>
       </template>
-      <p v-if="draft.kind === 'rule' && draft.index === -1" class="dns-hint">{{ $t('subscriptionDns.ruleHelp') }}</p>
-      <textarea v-model="draft.text" class="input mono" rows="9" spellcheck="false" style="width:100%; resize:vertical;" />
-        <div v-if="error" role="alert" class="dns-error">{{ $t('subscriptionDns.invalid') }}: {{ error }}</div>
-      </div>
-      <template #footer><Btn sm @click="draft = null; error = ''">{{ $t('ui.cancel') }}</Btn><Btn sm variant="primary" @click="saveDraft">{{ $t('actions.save') }}</Btn></template>
-    </Modal>
-    <div v-if="pending" class="sub-dns-head"><span>{{ $t(pending.kind === 'server' ? 'subscriptionDns.removeServer' : 'subscriptionDns.removeRule') }}</span><Btn sm @click="pending = null">{{ $t('no') }}</Btn><Btn sm @click="remove">{{ $t('yes') }}</Btn></div>
+    </EditorModal>
+    <DeleteConfirm :open="!!pending" @close="pending = null" @confirm="remove" />
     <div v-if="error && !draft" role="alert" class="dns-error">{{ $t('subscriptionDns.invalid') }}: {{ error }}</div>
   </div>
 </template>
@@ -87,11 +98,13 @@ import Field from '@/components/ui/Field.vue'
 import Select from '@/components/ui/Select.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
-import Modal from '@/components/ui/Modal.vue'
+import EditorModal from '@/layouts/drawers/EditorModal.vue'
+import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
+import { moveItem } from '@/plugins/useReorder'
 import ChipSelect from '@/components/ui/ChipSelect.vue'
-import { DnsTypes, createDnsServer } from '@/types/dns'
+import { createDnsServer, dnsServerTypeOptions, dnsServerTypesWithAddress } from '@/types/dns'
 import { editDns, isObject, resolverTag, setResolver, refs, type Catalog } from '@/plugins/subscriptionDns'
-const props = defineProps<{ config: Record<string, any>; catalog: Catalog }>()
+const props = defineProps<{ config: Record<string, any>; catalog: Catalog; catalogOptions: readonly { title: string; value: string }[] }>()
 const emit = defineEmits<{ 'update:config': [value: Record<string, any>] }>()
 const { t: translate } = useI18n()
 const dns = computed(() => props.config.dns ?? {})
@@ -100,14 +113,22 @@ const rules = computed<any[]>(() => Array.isArray(dns.value.rules) ? dns.value.r
 const tags = computed<string[]>(() => servers.value.map(s => s.tag).filter(t => typeof t === 'string' && t))
 const resolver = computed(() => resolverTag(props.config.default_domain_resolver))
 const strategies = ['prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only']
-const types = Object.values(DnsTypes)
-const networkTypes = ['tcp', 'udp', 'tls', 'quic', 'https', 'h3']
 const error = ref('')
 const draft = ref<{ kind: 'server'|'rule'; index: number; text: string } | null>(null)
 const pending = ref<{ kind: 'server'|'rule'; index: number } | null>(null)
-const draftType = ref('local')
 const parsed = computed(() => { try { const v = JSON.parse(draft.value?.text ?? ''); return isObject(v) ? v : null } catch { return null } })
-const ruleOptions = computed(() => [...new Set([...props.catalog.map(r => r.tag), ...(props.config.rule_set ?? []).map((r: any) => r.tag)])].filter(t => typeof t === 'string').map(t => ({ title: t, value: t })))
+const draftTitle = computed(() => {
+  if (!draft.value) return ''
+  const { kind, index } = draft.value
+  if (index === -1) return translate(kind === 'server' ? 'ui.dnssNew' : 'ui.dnsrNew') + ' · JSON'
+  const name = kind === 'server' ? servers.value[index]?.tag || '#' + (index + 1) : translate('objects.dnsrule') + ' #' + (index + 1)
+  return translate('actions.edit') + ' · ' + name + ' · JSON'
+})
+const ruleOptions = computed(() => {
+  const available = new Set([...props.catalog.map(r => r.tag), ...(props.config.rule_set ?? []).map((r: any) => r.tag)].filter(t => typeof t === 'string' && t))
+  const result = props.catalogOptions.filter(o => available.delete(o.value))
+  return [...result, ...Array.from(available, value => ({ title: value, value }))]
+})
 const commit = (fn: (next: Record<string, any>) => void) => {
   try { emit('update:config', editDns(props.config, fn, props.catalog)); error.value = ''; return true }
   catch (e) { error.value = String(e); return false }
@@ -115,7 +136,8 @@ const commit = (fn: (next: Record<string, any>) => void) => {
 const changeFinal = (tag: string) => { commit(t => { if (tag) t.dns.final = tag; else delete t.dns.final }) }
 const changeResolver = (tag: string) => { commit(t => setResolver(t, tag)) }
 const changeStrategy = (strategy: string) => { commit(t => { if (strategy) t.dns.strategy = strategy; else delete t.dns.strategy }) }
-const writeDraft = (v: any) => { if (draft.value) draft.value.text = JSON.stringify(v, null, 2) }
+const setDraftText = (text: string) => { if (draft.value) draft.value.text = text }
+const writeDraft = (v: any) => setDraftText(JSON.stringify(v, null, 2))
 const newTag = () => { let i = 1; while (tags.value.includes('dns-' + i)) i++; return 'dns-' + i }
 const openItem = (kind: 'server'|'rule', index: number) => {
   error.value = ''; pending.value = null
@@ -123,15 +145,26 @@ const openItem = (kind: 'server'|'rule', index: number) => {
     : (index < 0 ? { action: 'route', server: '' } : rules.value[index])
   draft.value = { kind, index, text: JSON.stringify(obj, null, 2) }
 }
-const openNewServer = () => { draftType.value = 'local'; openItem('server', -1) }
-const newServerType = (type: string) => { draftType.value = type; writeDraft(createDnsServer(type, { tag: parsed.value?.tag || newTag() })) }
+const openNewServer = () => openItem('server', -1)
+const newServerType = (type: string) => {
+  if (!parsed.value || parsed.value.type === type || !dnsServerTypeOptions.some(o => o.value === type)) return
+  writeDraft(createDnsServer(type, { tag: parsed.value.tag || newTag() }))
+}
 const patchText = (key: string, value: string) => { if (parsed.value) writeDraft({ ...parsed.value, [key]: value }) }
 const patchPort = (value: string) => { if (!parsed.value) return; const next = { ...parsed.value }; if (value === '') delete next.server_port; else next.server_port = Number(value); writeDraft(next) }
 const patchSets = (value: string[]) => { if (!parsed.value) return; const next = { ...parsed.value }; if (value.length) next.rule_set = value; else delete next.rule_set; writeDraft(next) }
 const ruleSummary = (r: any) => Object.entries(r).filter(([k]) => !['action', 'server'].includes(k)).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · ')
-const move = (i: number, delta: number) => { if (draft.value) return; commit(t => { const a = t.dns.rules; const j = i + delta; if (j >= 0 && j < a.length) [a[i], a[j]] = [a[j], a[i]] }) }
+const move = (i: number, delta: number) => {
+  if (draft.value || pending.value || i < 0 || i + delta < 0 || i + delta >= rules.value.length || i >= rules.value.length) return
+  commit(t => moveItem(t.dns.rules, i, delta))
+}
 const askRemove = (kind: 'server'|'rule', index: number) => { draft.value = null; error.value = ''; pending.value = { kind, index } }
-const remove = () => { const p = pending.value; if (!p) return; if (commit(t => { (p.kind === 'server' ? t.dns.servers : t.dns.rules).splice(p.index, 1) })) pending.value = null }
+const remove = () => {
+  const p = pending.value
+  if (!p) return
+  commit(t => { (p.kind === 'server' ? t.dns.servers : t.dns.rules).splice(p.index, 1) })
+  pending.value = null
+}
 const saveDraft = () => {
   const d = draft.value; if (!d) return
   try {
@@ -171,11 +204,10 @@ watch(() => props.config, () => { draft.value = null; pending.value = null })
 .sub-dns-desc .mono { flex:1 1 0; }
 .dns-delete { color:var(--rose); }
 .dns-icon:focus-visible, .sub-dns-desc:focus-visible, summary:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
-.sub-dns-head { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
-.sub-dns-head span { flex:1; }
 .sub-dns-draft { padding:12px; display:flex; flex-direction:column; gap:6px; }
 .dns-hint { font-size:12px; color:var(--text-3); margin:0; }
 .dns-error { color:var(--rose); overflow-wrap:anywhere; font-size:12px; }
+.dns-draft-error { padding:0 12px 12px; }
 @media(max-width:640px) {
  .dns-basics { grid-template-columns:repeat(2,minmax(0,1fr)); }
  .sub-dns-desc { flex-wrap:wrap; gap:0 5px; }

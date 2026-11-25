@@ -40,3 +40,20 @@ func TestSubscriptionDNSObjectResolverPriority(t *testing.T) {
 		t.Fatalf("DNS final overwritten: %v", cfg.DNS)
 	}
 }
+
+func TestSubscriptionDNSNativeConfig(t *testing.T) {
+	setupSubDB(t)
+	seedLocalIPv6Client(t, "dns-native", "")
+	template := `{"dns":{"servers":[{"tag":"local","type":"local"},{"tag":"cloudflare","type":"https","server":"1.1.1.1"},{"tag":"google","type":"https","server":"8.8.8.8"}],"final":"cloudflare","rules":[{"action":"predefined","query_type":["AAAA","HTTPS"],"domain_suffix":["ru"],"rcode":"NOERROR"},{"action":"predefined","query_type":["AAAA","HTTPS"],"rule_set":["geosite-ru-whitelist","category-ru"],"rcode":"NOERROR"},{"action":"route","server":"local","domain_suffix":["ru"]},{"action":"route","server":"local","rule_set":["geosite-ru-whitelist","category-ru"]},{"action":"predefined","query_type":"HTTPS","rcode":"NOERROR"},{"action":"evaluate","server":"cloudflare","tag":"cf","timeout":"2s"},{"action":"respond","match_response":"cf","response_rcode":"NOERROR"},{"action":"respond","match_response":"cf","response_rcode":"NXDOMAIN"},{"action":"route","server":"google","timeout":"5s"}]},"default_domain_resolver":"cloudflare","rules":[{"action":"sniff"},{"protocol":"dns","action":"hijack-dns"}],"rule_set":[{"type":"inline","tag":"geosite-ru-whitelist","rules":[{"domain_suffix":["ru"]}]},{"type":"inline","tag":"category-ru","rules":[{"domain_suffix":["su"]}]}]}`
+	if err := database.GetDB().Create(&model.Setting{Key: "subJsonExt", Value: template}).Error; err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := (&JsonService{}).GetJson("dns-native", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw == nil {
+		t.Fatal("no JSON")
+	}
+	buildSingBox(t, *raw)
+}

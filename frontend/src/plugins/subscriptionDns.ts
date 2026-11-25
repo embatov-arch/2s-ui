@@ -23,11 +23,11 @@ export function parseTemplate(text: string): Obj {
 export function validateDns(t: Obj): void {
   const d = t.dns
   if (d === undefined) {
-    if (resolverTag(t.default_domain_resolver)) fail('default_domain_resolver: DNS section is absent')
+    if (t.default_domain_resolver !== undefined && t.default_domain_resolver !== '') fail('default_domain_resolver: DNS section is absent')
     return
   }
   if (!isObject(d)) fail('dns: object expected')
-  const servers: unknown = d.servers ?? []
+  const servers: unknown = d.servers === undefined ? [] : d.servers
   if (!objects(servers)) fail('dns.servers: array of objects expected')
   const tags = new Set<string>()
   const serverList = servers as Obj[]
@@ -41,11 +41,11 @@ export function validateDns(t: Obj): void {
   // If an unnamed server exists, leave implicit tag semantics to the native core.
   const allNamed = serverList.every((s: Obj) => typeof s.tag === 'string' && s.tag !== '')
   const checkTag = (v: unknown, path: string) => {
-    if (v === undefined || v === '') return
+    if (v == null || v === '') return
     if (typeof v !== 'string' || (allNamed && !tags.has(v))) fail(path + ': unknown DNS tag ' + String(v))
   }
   const checkResolver = (v: unknown, path: string) => {
-    if (v === undefined || v === '') return
+    if (v == null || v === '') return
     if (isObject(v)) {
       if (!resolverTag(v)) fail(path + '.server: required')
       checkTag(v.server, path + '.server')
@@ -54,7 +54,30 @@ export function validateDns(t: Obj): void {
   checkTag(d.final, 'dns.final')
   checkResolver(t.default_domain_resolver, 'default_domain_resolver')
   for (const [i, s] of serverList.entries()) checkResolver(s.domain_resolver, `dns.servers[${i}].domain_resolver`)
-  const catalog = new Set<string>((t.rule_set ?? []).map((r: Obj) => r.tag))
+  // Only explicit resolver links are checked here; implicit behavior is native.
+  const resolverLinks = new Map(serverList.filter(s => s.tag).map(s => [s.tag as string, resolverTag(s.domain_resolver)]))
+  for (const start of resolverLinks.keys()) {
+    const seen = new Set<string>()
+    let tag = start
+    while (resolverLinks.has(tag)) {
+      if (seen.has(tag)) fail('dns.servers: circular domain_resolver dependency ' + tag)
+      seen.add(tag)
+      tag = resolverLinks.get(tag) ?? ''
+    }
+  }
+  const catalog = new Set<string>()
+  for (const r of t.rule_set ?? []) {
+    if (typeof r.tag !== 'string' || !r.tag) fail('rule_set: tag required')
+    if (catalog.has(r.tag)) fail('rule_set: duplicate tag ' + r.tag)
+    catalog.add(r.tag)
+  }
+  const checkedRefs = (value: unknown, path: string): string[] => {
+    if (value == null) return []
+    if (typeof value === 'string') return [value]
+    if (!Array.isArray(value) || !value.every(x => typeof x === 'string')) return fail(path + ': expected string or list of strings')
+    return value
+  }
+  const namedMatch = (r: Obj): boolean => typeof r.match_response === 'string' || (Array.isArray(r.rules) && r.rules.some((child: unknown) => isObject(child) && namedMatch(child)))
   const evaluated = new Set<string>()
   const checkRules = (rules: unknown, path: string, top = true) => {
     if (rules === undefined) return
@@ -63,13 +86,25 @@ export function validateDns(t: Obj): void {
       const p = `${path}[${i}]`
       checkTag(r.server, p + '.server')
       if (top && (!r.action || r.action === 'route' || r.action === 'evaluate') && !r.server) fail(p + '.server: required')
-      if (r.match_response === true && !evaluated.has('')) fail(p + '.match_response: preceding untagged evaluate required')
-      if (typeof r.match_response === 'string' && !evaluated.has(r.match_response)) fail(p + '.match_response: preceding evaluate required')
-      if (top && r.action === 'respond' && evaluated.size === 0) fail(p + ': preceding evaluate required')
-      for (const tag of refs(r.preferred_by)) checkTag(tag, p + '.preferred_by')
-      for (const tag of refs(r.rule_set)) if (!catalog.has(tag)) fail(p + '.rule_set: unknown tag ' + tag)
+      if (r.action != null && typeof r.action !== 'string') fail(p + '.action: expected string')
+      const match = r.match_response
+      if (match != null && typeof match !== 'boolean' && typeof match !== 'string') fail(p + '.match_response: expected boolean or tag')
+      if (match === true && !evaluated.has('')) fail(p + '.match_response: preceding untagged evaluate required')
+      if (typeof match === 'string' && (!match || !evaluated.has(match))) fail(p + '.match_response: preceding evaluate required')
+      if (top && r.action === 'respond') {
+        if (r.type === 'logical' && namedMatch(r)) fail(p + ': logical respond cannot bind a named response')
+        if (typeof match !== 'string' && !evaluated.has('')) fail(p + ': preceding untagged evaluate required')
+      }
+      for (const tag of checkedRefs(r.preferred_by, p + '.preferred_by')) checkTag(tag, p + '.preferred_by')
+      for (const tag of checkedRefs(r.rule_set, p + '.rule_set')) if (!catalog.has(tag)) fail(p + '.rule_set: unknown tag ' + tag)
       checkRules(r.rules, p + '.rules', false)
-      if (top && r.action === 'evaluate') evaluated.add(typeof r.tag === 'string' ? r.tag : '')
+      if (top && r.action === 'evaluate') {
+        if (r.tag != null && typeof r.tag !== 'string') fail(p + '.tag: expected string')
+        const tag = r.tag ?? ''
+        if (tag && evaluated.has(tag)) fail(p + ': duplicate evaluate tag ' + tag)
+        if (serverList.some(s => s.tag === r.server && s.type === 'fakeip')) fail(p + ': evaluate cannot use fakeip')
+        evaluated.add(tag)
+      }
     }
   }
   checkRules(d.rules, 'dns.rules')

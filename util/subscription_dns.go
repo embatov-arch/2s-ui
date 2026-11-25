@@ -19,6 +19,27 @@ func ValidateSubscriptionDNS(raw string) error {
 	if t == nil {
 		return fmt.Errorf("subJsonExt: expected object")
 	}
+	// Match the shapes the subscription editor reads, without rewriting values.
+	for _, key := range []string{"dns", "log", "experimental"} {
+		if value, present := t[key]; present {
+			if _, ok := value.(map[string]interface{}); !ok {
+				return fmt.Errorf("%s: expected object", key)
+			}
+		}
+	}
+	for _, key := range []string{"rules", "rule_set", "inbounds"} {
+		if value, present := t[key]; present {
+			items, ok := value.([]interface{})
+			if !ok {
+				return fmt.Errorf("%s: expected array", key)
+			}
+			for _, item := range items {
+				if _, ok := item.(map[string]interface{}); !ok {
+					return fmt.Errorf("%s: expected object entries", key)
+				}
+			}
+		}
+	}
 	d, exists := t["dns"]
 	if !exists {
 		if v, ok := t["default_domain_resolver"]; ok && v != "" {
@@ -44,6 +65,11 @@ func ValidateSubscriptionDNS(raw string) error {
 			}
 		}
 		return a, nil
+	}
+	for _, key := range []string{"servers", "rules"} {
+		if value, present := dns[key]; present && value == nil {
+			return fmt.Errorf("dns.%s: expected array", key)
+		}
 	}
 	servers, err := list(dns["servers"], "dns.servers")
 	if err != nil {
@@ -97,15 +123,50 @@ func ValidateSubscriptionDNS(raw string) error {
 			return err
 		}
 	}
+	// Check explicit domain_resolver links without inferring implicit defaults.
+	resolverLinks := map[string]string{}
+	serverTypes := map[string]string{}
+	for _, item := range servers {
+		s := item.(map[string]interface{})
+		tag, _ := s["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		target, _ := s["domain_resolver"].(string)
+		if object, ok := s["domain_resolver"].(map[string]interface{}); ok {
+			target, _ = object["server"].(string)
+		}
+		resolverLinks[tag] = target
+		serverTypes[tag], _ = s["type"].(string)
+	}
+	for start := range resolverLinks {
+		seen := map[string]bool{}
+		for tag := start; ; {
+			target, ok := resolverLinks[tag]
+			if !ok {
+				break
+			}
+			if seen[tag] {
+				return fmt.Errorf("dns.servers: circular domain_resolver dependency %q", tag)
+			}
+			seen[tag] = true
+			tag = target
+		}
+	}
 	catalog, err := list(t["rule_set"], "rule_set")
 	if err != nil {
 		return err
 	}
 	sets := map[string]bool{}
 	for _, item := range catalog {
-		if tag, ok := item.(map[string]interface{})["tag"].(string); ok {
-			sets[tag] = true
+		tag, ok := item.(map[string]interface{})["tag"].(string)
+		if !ok || tag == "" {
+			return fmt.Errorf("rule_set: tag required")
 		}
+		if sets[tag] {
+			return fmt.Errorf("rule_set: duplicate tag %q", tag)
+		}
+		sets[tag] = true
 	}
 	asRefs := func(v interface{}) ([]string, error) {
 		if v == nil {
@@ -128,6 +189,20 @@ func ValidateSubscriptionDNS(raw string) error {
 		return nil, fmt.Errorf("expected string or list")
 	}
 	evaluated := map[string]bool{}
+	var namedMatch func(map[string]interface{}) bool
+	namedMatch = func(rule map[string]interface{}) bool {
+		if _, ok := rule["match_response"].(string); ok {
+			return true
+		}
+		if children, ok := rule["rules"].([]interface{}); ok {
+			for _, child := range children {
+				if r, ok := child.(map[string]interface{}); ok && namedMatch(r) {
+					return true
+				}
+			}
+		}
+		return false
+	}
 	var checkRules func(interface{}, string, bool) error
 	checkRules = func(v interface{}, path string, top bool) error {
 		a, e := list(v, path)
@@ -140,20 +215,36 @@ func ValidateSubscriptionDNS(raw string) error {
 			if e = checkTag(r["server"], p+".server"); e != nil {
 				return e
 			}
-			action, _ := r["action"].(string)
+			action, isString := r["action"].(string)
+			if r["action"] != nil && !isString {
+				return fmt.Errorf("%s.action: expected string", p)
+			}
 			if top && (action == "" || action == "route" || action == "evaluate") {
 				if server, ok := r["server"].(string); !ok || server == "" {
 					return fmt.Errorf("%s.server: required", p)
 				}
 			}
-			if r["match_response"] == true && !evaluated[""] {
-				return fmt.Errorf("%s.match_response: preceding untagged evaluate required", p)
+			match := r["match_response"]
+			switch value := match.(type) {
+			case nil:
+			case bool:
+				if value && !evaluated[""] {
+					return fmt.Errorf("%s.match_response: preceding untagged evaluate required", p)
+				}
+			case string:
+				if value == "" || !evaluated[value] {
+					return fmt.Errorf("%s.match_response: preceding evaluate required", p)
+				}
+			default:
+				return fmt.Errorf("%s.match_response: expected boolean or tag", p)
 			}
-			if tag, ok := r["match_response"].(string); ok && !evaluated[tag] {
-				return fmt.Errorf("%s.match_response: preceding evaluate required", p)
-			}
-			if top && action == "respond" && len(evaluated) == 0 {
-				return fmt.Errorf("%s: preceding evaluate required", p)
+			if top && action == "respond" {
+				if r["type"] == "logical" && namedMatch(r) {
+					return fmt.Errorf("%s: logical respond cannot bind a named response", p)
+				}
+				if _, named := match.(string); !named && !evaluated[""] {
+					return fmt.Errorf("%s: preceding untagged evaluate required", p)
+				}
 			}
 			rs, e := asRefs(r["rule_set"])
 			if e != nil {
@@ -173,11 +264,24 @@ func ValidateSubscriptionDNS(raw string) error {
 					return e
 				}
 			}
+			if children, present := r["rules"]; present && children == nil {
+				return fmt.Errorf("%s.rules: expected array", p)
+			}
 			if e = checkRules(r["rules"], p+".rules", false); e != nil {
 				return e
 			}
 			if top && action == "evaluate" {
-				tag, _ := r["tag"].(string)
+				tag, ok := r["tag"].(string)
+				if r["tag"] != nil && !ok {
+					return fmt.Errorf("%s.tag: expected string", p)
+				}
+				if tag != "" && evaluated[tag] {
+					return fmt.Errorf("%s: duplicate evaluate tag %q", p, tag)
+				}
+				server, _ := r["server"].(string)
+				if serverTypes[server] == "fakeip" {
+					return fmt.Errorf("%s: evaluate cannot use fakeip", p)
+				}
 				evaluated[tag] = true
 			}
 		}

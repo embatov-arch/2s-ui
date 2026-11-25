@@ -21,6 +21,15 @@ func TestValidateSubscriptionDNS(t *testing.T) {
 		{"object unknown preserved", `{"dns":{"servers":[{"tag":"a","type":"future"}],"rules":[{"future_field":true,"action":"route","server":"a"}]},"default_domain_resolver":{"server":"a","future_option":true}}`, true},
 		{"correct evaluate chain", `{"dns":{"servers":[{"tag":"a"}],"rules":[{"action":"evaluate","server":"a","tag":"a1"},{"match_response":"a1","action":"respond"}]}}`, true},
 		{"wrong evaluate chain", `{"dns":{"servers":[{"tag":"a"}],"rules":[{"match_response":"a1","action":"respond"},{"action":"evaluate","server":"a","tag":"a1"}]}}`, false},
+		{"duplicate evaluate", `{"dns":{"servers":[{"tag":"a"}],"rules":[{"action":"evaluate","tag":"r","server":"a"},{"action":"evaluate","tag":"r","server":"a"}]}}`, false},
+		{"unnamed response from named evaluate", `{"dns":{"servers":[{"tag":"a"}],"rules":[{"action":"evaluate","tag":"r","server":"a"},{"action":"respond"}]}}`, false},
+		{"anonymous response", `{"dns":{"servers":[{"tag":"a"}],"rules":[{"action":"evaluate","server":"a"},{"action":"respond","match_response":true}]}}`, true},
+		{"logical respond named", `{"dns":{"servers":[{"tag":"a"}],"rules":[{"action":"evaluate","tag":"r","server":"a"},{"type":"logical","mode":"and","rules":[{"match_response":"r"}],"action":"respond"}]}}`, false},
+		{"resolver cycle", `{"dns":{"servers":[{"tag":"a","domain_resolver":"b"},{"tag":"b","domain_resolver":{"server":"a"}}]}}`, false},
+		{"duplicate rule set", `{"dns":{},"rule_set":[{"tag":"a"},{"tag":"a"}]}`, false},
+		{"bad refs", `{"dns":{"rules":[{"action":"reject","rule_set":[1]}]}}`, false},
+		{"evaluate fakeip", `{"dns":{"servers":[{"tag":"a","type":"fakeip"}],"rules":[{"action":"evaluate","server":"a"}]}}`, false},
+		{"null servers", `{"dns":{"servers":null}}`, false},
 		{"no DNS resolver", `{"default_domain_resolver":"a"}`, false}, {"bad server list", `{"dns":{"servers":{}}}`, false}, {"bad rule list", `{"dns":{"rules":[null]}}`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

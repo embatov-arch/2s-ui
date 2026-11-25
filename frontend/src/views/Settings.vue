@@ -3,6 +3,7 @@
     :open="jsonEditor"
     :title="$t('editor') + ' - ' + $t('setting.jsonSub')"
     :content="settings.subJsonExt"
+    keep-open-on-save
     @save="saveJsonEditor"
     @close="jsonEditor = false"
   />
@@ -156,7 +157,7 @@
           <Ico name="chevronDown" :size="14" class="json-compact-chevron" />
         </summary>
         <div class="json-compact-content">
-          <SubscriptionDns v-model:config="subJsonExt" :catalog="geo" />
+          <SubscriptionDns v-model:config="subJsonExt" :catalog="geo" :catalog-options="geoList" />
         </div>
       </details>
       <details v-if="enableInb" class="json-compact-section">
@@ -1662,6 +1663,7 @@ const saveJsonEditor = (data: string) => {
     jsonTemplateError.value = ''
     disabledDnsDraft = undefined
     subJsonExt.value = next
+    jsonEditor.value = false
   } catch (e) {
     push.error({
       message: i18n.global.t('failed') + ": " + i18n.global.t('error.invalidData'),

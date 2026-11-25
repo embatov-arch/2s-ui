@@ -52,7 +52,14 @@ const plain = v => JSON.parse(JSON.stringify(v))
 
 function harness(t) {
   const props = vue.reactive({
-    catalog: [],
+    catalog: [
+      { tag: 'geosite-cn', type: 'remote', url: 'https://example.org/cn.srs' },
+      { tag: 'geosite-private', type: 'remote', url: 'https://example.org/private.srs' }
+    ],
+    catalogOptions: [
+      { title: 'Site-Private', value: 'geosite-private' },
+      { title: '🇨🇳 Site-China', value: 'geosite-cn' }
+    ],
     config: {
       dns: {
         final: 'cloudflare',
@@ -169,4 +176,75 @@ test('DNS controls use the same main JSON template', () => {
   assert.ok(settings.includes('v-model:config="subJsonExt"'))
   assert.ok(settings.includes(':content="settings.subJsonExt"'))
   assert.ok(!source.includes("openItem('advanced'"))
+})
+
+test('stock option titles and order, custom tags and definitions preserved', t => {
+  const { props, state: s } = harness(t)
+  props.config.rule_set = [
+    { tag: 'geosite-cn', type: 'remote', url: 'https://example.org/custom-cn.srs' },
+    { tag: 'custom', type: 'inline', rules: [{ domain: ['example.org'] }] }
+  ]
+  assert.deepEqual(plain(s.ruleOptions.value), [
+    { title: 'Site-Private', value: 'geosite-private' },
+    { title: '🇨🇳 Site-China', value: 'geosite-cn' },
+    { title: 'custom', value: 'custom' }
+  ])
+  s.openItem('rule', 2)
+  s.patchSets(['geosite-cn', 'custom'])
+  s.saveDraft()
+  assert.deepEqual(plain(props.config.dns.rules[2].rule_set), ['geosite-cn', 'custom'])
+  assert.equal(props.config.rule_set[0].url, 'https://example.org/custom-cn.srs')
+  assert.equal(props.config.rule_set.length, 2)
+})
+test('server type follows the JSON draft, not a second state', t => {
+  const { state: s } = harness(t)
+  s.openNewServer()
+  s.setDraftText(JSON.stringify({ type: 'https', tag: 'new', server: '1.0.0.1', path: '/dns-query' }))
+  s.newServerType('https')
+  assert.equal(s.parsed.value.path, '/dns-query')
+  s.newServerType('udp')
+  assert.equal(s.parsed.value.type, 'udp')
+  assert.equal(s.parsed.value.tag, 'new')
+})
+test('successful move uses shared implementation and preserves unrelated JSON', t => {
+  const { props, state: s } = harness(t)
+  const expected = plain(props.config)
+  s.move(2, -1)
+  const moved = expected.dns.rules.pop()
+  expected.dns.rules.splice(1, 0, moved)
+  assert.deepEqual(plain(props.config), expected)
+})
+test('scope uses existing editor and confirmation, no parallel catalog', () => {
+  const settings = fs.readFileSync(path.join(root, 'views/Settings.vue'), 'utf8')
+  assert.ok(settings.includes(':catalog-options="geoList"'))
+  assert.ok(source.includes('<EditorModal'))
+  assert.ok(source.includes('<DeleteConfirm'))
+  assert.ok(!source.includes('<textarea'))
+  assert.ok(source.includes('keep-open-on-save'))
+})
+test('shared editor preserves old close behavior and supports validated saving', t => {
+  const file = path.join(root, 'layouts/drawers/EditorModal.vue')
+  const code = compileScript(parse(fs.readFileSync(file, 'utf8')).descriptor, { id: 'editor-test' }).content
+  const editor = load(code, file).default
+  const scope = vue.effectScope()
+  t.after(() => scope.stop())
+  const events = []
+  const props = vue.reactive({ open: true, content: '{}' })
+  const state = scope.run(() => editor.setup(props, { expose() {}, emit: (...args) => events.push(args) }))
+  state.onInput('{"a":1}')
+  state.save()
+  assert.deepEqual(events, [['save', '{"a":1}'], ['close']])
+  events.length = 0
+  props.keepOpenOnSave = true
+  state.save()
+  assert.deepEqual(events, [['save', '{"a":1}']])
+  events.length = 0
+  props.controlled = true
+  props.content = '{"b":2}'
+  state.onInput('{"b":3}')
+  assert.deepEqual(events, [['update:content', '{"b":3}']])
+  props.content = '{"b":3}'
+  events.length = 0
+  state.save()
+  assert.deepEqual(events, [['save', '{"b":3}']])
 })
