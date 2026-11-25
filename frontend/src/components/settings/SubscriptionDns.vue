@@ -161,7 +161,20 @@ const askRemove = (kind: 'server'|'rule', index: number) => { draft.value = null
 const remove = () => {
   const p = pending.value
   if (!p) return
-  commit(t => { (p.kind === 'server' ? t.dns.servers : t.dns.rules).splice(p.index, 1) })
+  commit(t => {
+    if (p.kind === 'server') {
+      const servers = t.dns.servers
+      // Preserve effective tags before their indices change.
+      for (let i = p.index + 1; i < servers.length; i++) {
+        if (servers[i].tag === undefined || servers[i].tag === '') {
+          servers[i].tag = dnsServerTag(servers[i], i)
+        }
+      }
+      servers.splice(p.index, 1)
+    } else {
+      t.dns.rules.splice(p.index, 1)
+    }
+  })
   pending.value = null
 }
 const saveDraft = () => {

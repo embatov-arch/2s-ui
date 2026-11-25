@@ -248,3 +248,107 @@ test('shared editor preserves old close behavior and supports validated saving',
   state.save()
   assert.deepEqual(events, [['save', '{"b":3}']])
 })
+
+
+test('Repeated DNS server deletion preserves effective tags', t => {
+  const { props, state: s } = harness(t)
+
+  props.config = {
+    dns: {
+      servers: Array.from({ length: 11 }, () => ({ type: 'local' })),
+      final: '10',
+      rules: [{ action: 'route', server: '3' }]
+    },
+    default_domain_resolver: { server: '10' },
+    log: { level: 'warn' }
+  }
+
+  const expected = plain(props.config)
+
+  s.askRemove('server', 2)
+  s.remove()
+
+  expected.dns.servers.forEach((server, i) => {
+    if (i > 2) server.tag = String(i)
+  })
+  expected.dns.servers.splice(2, 1)
+
+  assert.equal(s.error.value, '')
+  assert.deepEqual(plain(props.config), expected)
+  assert.deepEqual(plain(s.tags.value),
+    ['0','1','3','4','5','6','7','8','9','10'])
+
+  s.askRemove('server', 4)
+  s.remove()
+  expected.dns.servers.splice(4, 1)
+
+  assert.equal(s.error.value, '')
+  assert.deepEqual(plain(props.config), expected)
+  assert.deepEqual(plain(s.tags.value),
+    ['0','1','3','4','6','7','8','9','10'])
+
+  s.openNewServer()
+  s.saveDraft()
+
+  assert.equal(s.error.value, '')
+  assert.deepEqual(plain(s.tags.value),
+    ['0','1','3','4','6','7','8','9','10','dns-1'])
+
+  assert.deepEqual(
+    plain(props.config.dns.servers.slice(0, -1)),
+    expected.dns.servers
+  )
+})
+
+test('Referenced implicit DNS server cannot be replaced by index shift', t => {
+  const { props, state: s } = harness(t)
+
+  props.config = {
+    dns: {
+      servers: [
+        { type: 'local' },
+        { type: 'https', server: '1.1.1.1' },
+        { type: 'https', server: '8.8.8.8' }
+      ],
+      final: '1',
+      rules: [{ action: 'route', server: '1' }]
+    }
+  }
+
+  const expected = plain(props.config)
+
+  s.askRemove('server', 1)
+  s.remove()
+
+  assert.ok(s.error.value)
+  assert.deepEqual(plain(props.config), expected)
+})
+
+test('Explicit and implicit DNS tags remain stable together', t => {
+  const { props, state: s } = harness(t)
+
+  props.config = {
+    dns: {
+      servers: [
+        { tag: 'unused', type: 'local' },
+        { type: 'local' },
+        { tag: 'cloudflare', type: 'https', server: '1.1.1.1' },
+        { tag: '9', type: 'local' }
+      ],
+      final: 'cloudflare',
+      rules: [{ action: 'route', server: '1' }]
+    }
+  }
+
+  const expected = plain(props.config)
+  expected.dns.servers[1].tag = '1'
+  expected.dns.servers.shift()
+
+  s.askRemove('server', 0)
+  s.remove()
+
+  assert.equal(s.error.value, '')
+  assert.deepEqual(plain(props.config), expected)
+  assert.deepEqual(plain(s.tags.value),
+    ['1','cloudflare','9'])
+})
