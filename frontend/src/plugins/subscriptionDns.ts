@@ -9,6 +9,9 @@ const fail = (path: string): never => { throw new Error(path) }
 export const refs = (v: unknown): string[] => typeof v === 'string' ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 export const resolverTag = (v: unknown): string => typeof v === 'string' ? v : isObject(v) && typeof v.server === 'string' ? v.server : ''
 
+export const dnsServerTag = (server: Obj, index: number): string =>
+  typeof server.tag === 'string' && server.tag !== '' ? server.tag : String(index)
+
 // Guard the shapes read by Settings.vue. Do not discard unknown native keys.
 export function parseTemplate(text: string): Obj {
   const value: unknown = text.trim() === '' ? {} : JSON.parse(text)
@@ -33,16 +36,13 @@ export function validateDns(t: Obj): void {
   const serverList = servers as Obj[]
   for (const [i, s] of serverList.entries()) {
     if (s.tag !== undefined && typeof s.tag !== 'string') fail(`dns.servers[${i}].tag`)
-    if (typeof s.tag === 'string' && s.tag) {
-      if (tags.has(s.tag)) fail('dns.servers: duplicate tag ' + s.tag)
-      tags.add(s.tag)
-    }
+    const tag = dnsServerTag(s, i)
+    if (tags.has(tag)) fail('dns.servers: duplicate tag ' + tag)
+    tags.add(tag)
   }
-  // If an unnamed server exists, leave implicit tag semantics to the native core.
-  const allNamed = serverList.every((s: Obj) => typeof s.tag === 'string' && s.tag !== '')
   const checkTag = (v: unknown, path: string) => {
     if (v == null || v === '') return
-    if (typeof v !== 'string' || (allNamed && !tags.has(v))) fail(path + ': unknown DNS tag ' + String(v))
+    if (typeof v !== 'string' || !tags.has(v)) fail(path + ': unknown DNS tag ' + String(v))
   }
   const checkResolver = (v: unknown, path: string) => {
     if (v == null || v === '') return
@@ -55,7 +55,7 @@ export function validateDns(t: Obj): void {
   checkResolver(t.default_domain_resolver, 'default_domain_resolver')
   for (const [i, s] of serverList.entries()) checkResolver(s.domain_resolver, `dns.servers[${i}].domain_resolver`)
   // Only explicit resolver links are checked here; implicit behavior is native.
-  const resolverLinks = new Map(serverList.filter(s => s.tag).map(s => [s.tag as string, resolverTag(s.domain_resolver)]))
+  const resolverLinks = new Map(serverList.map((s, i) => [dnsServerTag(s, i), resolverTag(s.domain_resolver)]))
   for (const start of resolverLinks.keys()) {
     const seen = new Set<string>()
     let tag = start
@@ -102,7 +102,7 @@ export function validateDns(t: Obj): void {
         if (r.tag != null && typeof r.tag !== 'string') fail(p + '.tag: expected string')
         const tag = r.tag ?? ''
         if (tag && evaluated.has(tag)) fail(p + ': duplicate evaluate tag ' + tag)
-        if (serverList.some(s => s.tag === r.server && s.type === 'fakeip')) fail(p + ': evaluate cannot use fakeip')
+        if (serverList.some((s, i) => dnsServerTag(s, i) === r.server && s.type === 'fakeip')) fail(p + ': evaluate cannot use fakeip')
         evaluated.add(tag)
       }
     }
@@ -144,15 +144,20 @@ const hasDependency = (v: unknown): boolean => {
 export function toggleDns(t: Obj, enabled: boolean, defaults: Obj): Obj {
   const next = copy(t)
   if (enabled) {
-    if (next.dns !== undefined) return next
-    next.dns = copy(defaults)
-    // Materialize the actual backend defaults only if rules were absent.
-    // Existing explicit rules, including [], belong to the operator.
+    next.dns ??= copy(defaults)
+    // Preserve existing routing and restore standard DNS interception.
     if (next.rules === undefined) next.rules = [
       { action: 'sniff' }, { protocol: 'dns', action: 'hijack-dns' },
       { clash_mode: 'Direct', action: 'route', outbound: 'direct' },
       { clash_mode: 'Global', action: 'route', outbound: 'proxy' },
     ]
+    if (!next.rules.some((r: Obj) => r.action === 'hijack-dns')) {
+      const hijack = { protocol: 'dns', action: 'hijack-dns' }
+      const sniff = next.rules.findIndex((r: Obj) =>
+        r.action === 'sniff' && Object.keys(r).length === 1)
+      if (sniff < 0) next.rules.unshift({ action: 'sniff' }, hijack)
+      else next.rules.splice(sniff + 1, 0, hijack)
+    }
   } else {
     if (next.dns === undefined) return next
     if (resolverTag(next.default_domain_resolver)) fail('Clear default_domain_resolver before removing DNS')

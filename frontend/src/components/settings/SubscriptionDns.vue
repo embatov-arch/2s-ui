@@ -28,8 +28,8 @@
       <summary><Ico name="chevronDown" :size="16" class="dns-chevron" /><strong>{{ $t('ui.dnsServers') }}</strong><span class="dns-count">{{ servers.length }}</span></summary>
       <div class="dns-list-body">
         <div v-for="(server, i) in servers" :key="i" class="sub-dns-row">
-          <button type="button" class="sub-dns-desc" :aria-label="$t('actions.edit') + ' ' + (server.tag || '#' + (i + 1))" :disabled="!!draft || !!pending" :title="`${server.tag || '#' + (i + 1)} · ${server.type || $t('subscriptionDns.legacy')} · ${server.server || '—'}`" @click="openItem('server', i)">
-            <strong>{{ server.tag || '#' + (i + 1) }}</strong><span class="mono">{{ server.type || $t('subscriptionDns.legacy') }}<template v-if="server.server"> · {{ server.server }}<template v-if="server.server_port">:{{ server.server_port }}</template></template></span>
+          <button type="button" class="sub-dns-desc" :aria-label="$t('actions.edit') + ' ' + (dnsServerTag(server, i))" :disabled="!!draft || !!pending" :title="`${dnsServerTag(server, i)} · ${server.type || $t('subscriptionDns.legacy')} · ${server.server || '—'}`" @click="openItem('server', i)">
+            <strong>{{ dnsServerTag(server, i) }}</strong><span class="mono">{{ server.type || $t('subscriptionDns.legacy') }}<template v-if="server.server"> · {{ server.server }}<template v-if="server.server_port">:{{ server.server_port }}</template></template></span>
             <Ico name="edit" :size="16" class="dns-row-edit" />
           </button>
           <Btn sm icon variant="subtle" class="dns-icon dns-delete" :aria-label="$t('actions.del')" :title="$t('actions.del')" :disabled="!!draft || !!pending" @click="askRemove('server', i)"><Ico name="trash" :size="16" /></Btn>
@@ -59,8 +59,7 @@
       :open="!!draft"
       :title="draftTitle"
       :content="draft?.text ?? ''"
-      :width="680"
-      compact controlled keep-open-on-save
+      controlled keep-open-on-save
       @update:content="setDraftText"
       @save="saveDraft"
       @close="draft = null; error = ''"
@@ -103,14 +102,14 @@ import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import { moveItem } from '@/plugins/useReorder'
 import ChipSelect from '@/components/ui/ChipSelect.vue'
 import { createDnsServer, dnsServerTypeOptions, dnsServerTypesWithAddress } from '@/types/dns'
-import { editDns, isObject, resolverTag, setResolver, refs, type Catalog } from '@/plugins/subscriptionDns'
+import { editDns, isObject, resolverTag, setResolver, refs, dnsServerTag, type Catalog } from '@/plugins/subscriptionDns'
 const props = defineProps<{ config: Record<string, any>; catalog: Catalog; catalogOptions: readonly { title: string; value: string }[] }>()
 const emit = defineEmits<{ 'update:config': [value: Record<string, any>] }>()
 const { t: translate } = useI18n()
 const dns = computed(() => props.config.dns ?? {})
 const servers = computed<any[]>(() => Array.isArray(dns.value.servers) ? dns.value.servers : [])
 const rules = computed<any[]>(() => Array.isArray(dns.value.rules) ? dns.value.rules : [])
-const tags = computed<string[]>(() => servers.value.map(s => s.tag).filter(t => typeof t === 'string' && t))
+const tags = computed<string[]>(() => servers.value.map(dnsServerTag))
 const resolver = computed(() => resolverTag(props.config.default_domain_resolver))
 const strategies = ['prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only']
 const error = ref('')
@@ -121,7 +120,7 @@ const draftTitle = computed(() => {
   if (!draft.value) return ''
   const { kind, index } = draft.value
   if (index === -1) return translate(kind === 'server' ? 'ui.dnssNew' : 'ui.dnsrNew') + ' · JSON'
-  const name = kind === 'server' ? servers.value[index]?.tag || '#' + (index + 1) : translate('objects.dnsrule') + ' #' + (index + 1)
+  const name = kind === 'server' ? dnsServerTag(servers.value[index] ?? {}, index) : translate('objects.dnsrule') + ' #' + (index + 1)
   return translate('actions.edit') + ' · ' + name + ' · JSON'
 })
 const ruleOptions = computed(() => {

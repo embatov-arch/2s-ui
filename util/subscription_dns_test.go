@@ -57,3 +57,18 @@ func TestExplicitSubscriptionResolver(t *testing.T) {
 		}
 	}
 }
+
+func TestSubscriptionImplicitDNSTags(t *testing.T) {
+	for _, tc := range []struct {
+		raw string
+		ok  bool
+	}{
+		{`{"dns":{"servers":[{"type":"local"},{"type":"local"}],"final":"1"}}`, true},
+		{`{"dns":{"servers":[{"type":"local"}],"final":"missing"}}`, false},
+		{`{"dns":{"servers":[{"type":"local"},{"type":"local","tag":"0"}]}}`, false},
+	} {
+		if err := ValidateSubscriptionDNS(tc.raw); (err == nil) != tc.ok {
+			t.Fatalf("got %v, expected valid=%v: %s", err, tc.ok, tc.raw)
+		}
+	}
+}

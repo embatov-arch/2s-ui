@@ -1,11 +1,10 @@
 <template>
-  <Modal :open="open" :title="title" :width="width ?? 760" @close="$emit('close')">
+  <Modal :open="open" :title="title" :width="760" @close="$emit('close')">
     <div style="display: flex; flex-direction: column; flex: 1;">
       <slot name="before" />
       <textarea
         class="input mono editor-area"
         spellcheck="false"
-        :class="{ 'editor-area-compact': compact }"
         :value="controlled ? content : draft"
         @input="onInput(($event.target as HTMLTextAreaElement).value)"
       />
@@ -29,8 +28,6 @@ const props = defineProps<{
   content: string
   controlled?: boolean
   keepOpenOnSave?: boolean
-  compact?: boolean
-  width?: number
 }>()
 const emit = defineEmits<{ close: []; save: [value: string]; 'update:content': [value: string] }>()
 
@@ -58,6 +55,4 @@ const save = () => {
   background: var(--surface-3);
 }
 .editor-area:focus { box-shadow: none; border: none; background: var(--surface-3); }
-.editor-area-compact { min-height: 180px; width: auto; margin: 0 12px 12px; border: 1px solid var(--line); border-radius: var(--radius-xs); }
-.editor-area-compact:focus { border: 1px solid var(--brand); }
 </style>

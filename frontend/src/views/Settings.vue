@@ -454,7 +454,7 @@ import DomainInput from '@/components/ui/DomainInput.vue'
 import CertsPanel from '@/components/settings/CertsPanel.vue'
 import { loadCerts, certsLoaded, findCert, daysLeft } from '@/plugins/certs'
 import SubscriptionDns from '@/components/settings/SubscriptionDns.vue'
-import { parseTemplate, validateDns, toggleDns, copy } from '@/plugins/subscriptionDns'
+import { parseTemplate, validateDns, toggleDns, copy, refs } from '@/plugins/subscriptionDns'
 import { appendMissingRuleSets } from '@/plugins/subscriptionRuleSets'
 
 const tab = ref('interface')
@@ -1411,7 +1411,7 @@ const enableDns = computed({
       if (!v && !window.confirm(i18n.global.t('confirm') + ' · DNS')) return
       const before = subJsonExt.value
       const next = v && disabledDnsDraft?.after === JSON.stringify(before)
-        ? copy(disabledDnsDraft.before) : toggleDns(before, v, defaultDns)
+        ? toggleDns(disabledDnsDraft.before, true, defaultDns) : toggleDns(before, v, defaultDns)
       if (v) disabledDnsDraft = undefined
       else disabledDnsDraft = { before: copy(before), after: JSON.stringify(next) }
       subJsonExt.value = next
@@ -1610,7 +1610,7 @@ const rules = computed((): any => subJsonExt.value?.rules ?? undefined)
 const ruleToDirect = computed({
   get: (): string[] => {
     const ruleIndex = rules.value?.findIndex((r: any) => r.outbound == "direct" && Object.hasOwn(r, 'rule_set')) ?? -1
-    return ruleIndex >= 0 ? rules.value[ruleIndex].rule_set : []
+    return ruleIndex >= 0 ? refs(rules.value[ruleIndex].rule_set) : []
   },
   set: (v: string[]) => {
     const ruleIndex = rules.value?.findIndex((r: any) => r.outbound == "direct" && Object.hasOwn(r, 'rule_set')) ?? -1
@@ -1631,7 +1631,7 @@ const ruleToDirect = computed({
 const ruleToBlock = computed({
   get: (): string[] => {
     const ruleIndex = rules.value?.findIndex((r: any) => r.action == "reject" && Object.hasOwn(r, 'rule_set')) ?? -1
-    return ruleIndex >= 0 ? rules.value[ruleIndex].rule_set : []
+    return ruleIndex >= 0 ? refs(rules.value[ruleIndex].rule_set) : []
   },
   set: (v: string[]) => {
     const ruleIndex = rules.value?.findIndex((r: any) => r.action == "reject" && Object.hasOwn(r, 'rule_set')) ?? -1

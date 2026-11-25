@@ -723,8 +723,7 @@ func fallbackDomainResolver(othersJson map[string]interface{}) string {
 	}
 	// No final server either: the first one is what sing-box treats as default.
 	if first, ok := servers[0].(map[string]interface{}); ok {
-		tag, _ := first["tag"].(string)
-		return tag
+		return util.SubscriptionDNSTag(first, 0)
 	}
 	return ""
 }

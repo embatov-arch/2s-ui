@@ -3,8 +3,19 @@ package util
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+
+	"github.com/sagernet/sing-box/option"
 )
+
+// SubscriptionDNSTag follows sing-box's implicit DNS transport tags.
+func SubscriptionDNSTag(server map[string]interface{}, index int) string {
+	if tag := AsString(server["tag"]); tag != "" {
+		return tag
+	}
+	return strconv.Itoa(index)
+}
 
 // ValidateSubscriptionDNS checks the template's DNS structure and explicit references.
 // It does not replace sing-box's native config check, and does not rewrite the template.
@@ -47,10 +58,7 @@ func ValidateSubscriptionDNS(raw string) error {
 		}
 		return nil
 	}
-	dns, ok := d.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("dns: expected object")
-	}
+	dns := d.(map[string]interface{})
 	list := func(v interface{}, path string) ([]interface{}, error) {
 		if v == nil {
 			return nil, nil
@@ -76,17 +84,13 @@ func ValidateSubscriptionDNS(raw string) error {
 		return err
 	}
 	tags := map[string]bool{}
-	allNamed := true
 	for i, item := range servers {
 		s := item.(map[string]interface{})
 		tag, ok := s["tag"].(string)
 		if _, exists := s["tag"]; exists && !ok {
 			return fmt.Errorf("dns.servers[%d].tag: expected string", i)
 		}
-		if tag == "" {
-			allNamed = false
-			continue
-		}
+		tag = SubscriptionDNSTag(s, i)
 		if tags[tag] {
 			return fmt.Errorf("dns.servers: duplicate tag %q", tag)
 		}
@@ -97,7 +101,7 @@ func ValidateSubscriptionDNS(raw string) error {
 			return nil
 		}
 		s, ok := v.(string)
-		if !ok || allNamed && !tags[s] {
+		if !ok || !tags[s] {
 			return fmt.Errorf("%s: unknown DNS tag %v", path, v)
 		}
 		return nil
@@ -126,12 +130,9 @@ func ValidateSubscriptionDNS(raw string) error {
 	// Check explicit domain_resolver links without inferring implicit defaults.
 	resolverLinks := map[string]string{}
 	serverTypes := map[string]string{}
-	for _, item := range servers {
+	for i, item := range servers {
 		s := item.(map[string]interface{})
-		tag, _ := s["tag"].(string)
-		if tag == "" {
-			continue
-		}
+		tag := SubscriptionDNSTag(s, i)
 		target, _ := s["domain_resolver"].(string)
 		if object, ok := s["domain_resolver"].(map[string]interface{}); ok {
 			target, _ = object["server"].(string)
@@ -224,25 +225,24 @@ func ValidateSubscriptionDNS(raw string) error {
 					return fmt.Errorf("%s.server: required", p)
 				}
 			}
-			match := r["match_response"]
-			switch value := match.(type) {
-			case nil:
-			case bool:
-				if value && !evaluated[""] {
-					return fmt.Errorf("%s.match_response: preceding untagged evaluate required", p)
+			var match option.DNSRuleMatchResponse
+			if value := r["match_response"]; value != nil {
+				raw, err := json.Marshal(value)
+				if err != nil {
+					return err
 				}
-			case string:
-				if value == "" || !evaluated[value] {
-					return fmt.Errorf("%s.match_response: preceding evaluate required", p)
+				if err = json.Unmarshal(raw, &match); err != nil {
+					return fmt.Errorf("%s.match_response: %w", p, err)
 				}
-			default:
-				return fmt.Errorf("%s.match_response: expected boolean or tag", p)
+			}
+			if match.IsEnabled() && !evaluated[match.ResponseTag()] {
+				return fmt.Errorf("%s.match_response: preceding evaluate required", p)
 			}
 			if top && action == "respond" {
 				if r["type"] == "logical" && namedMatch(r) {
 					return fmt.Errorf("%s: logical respond cannot bind a named response", p)
 				}
-				if _, named := match.(string); !named && !evaluated[""] {
+				if match.ResponseTag() == "" && !evaluated[""] {
 					return fmt.Errorf("%s: preceding untagged evaluate required", p)
 				}
 			}

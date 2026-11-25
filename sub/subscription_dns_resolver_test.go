@@ -57,3 +57,20 @@ func TestSubscriptionDNSNativeConfig(t *testing.T) {
 	}
 	buildSingBox(t, *raw)
 }
+
+func TestSubscriptionDNSNativeNestedConfig(t *testing.T) {
+	setupSubDB(t)
+	seedLocalIPv6Client(t, "dns-native-nested", "")
+	template := `{"dns":{"servers":[{"tag":"local","type":"local"},{"tag":"cloudflare","type":"https","server":"1.1.1.1"},{"tag":"google","type":"https","server":"8.8.8.8"}],"final":"cloudflare","rules":[{"type":"logical","mode":"and","rules":[{"query_type":["AAAA","HTTPS"]},{"type":"logical","mode":"or","rules":[{"domain_suffix":["ru"]},{"rule_set":["geosite-ru-whitelist","category-ru"]}]}],"action":"predefined","rcode":"NOERROR"},{"type":"logical","mode":"or","rules":[{"domain_suffix":["ru"]},{"rule_set":["geosite-ru-whitelist","category-ru"]}],"action":"route","server":"local"},{"action":"evaluate","server":"cloudflare","tag":"cf","timeout":"2s"},{"action":"respond","match_response":"cf","response_rcode":"NOERROR"},{"action":"respond","match_response":"cf","response_rcode":"NXDOMAIN"},{"action":"route","server":"google","timeout":"5s"}]},"default_domain_resolver":"cloudflare","rules":[{"action":"sniff"},{"protocol":"dns","action":"hijack-dns"}],"rule_set":[{"type":"inline","tag":"geosite-ru-whitelist","rules":[{"domain_suffix":["ru"]}]},{"type":"inline","tag":"category-ru","rules":[{"domain_suffix":["su"]}]}]}`
+	if err := database.GetDB().Create(&model.Setting{Key: "subJsonExt", Value: template}).Error; err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := (&JsonService{}).GetJson("dns-native-nested", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw == nil {
+		t.Fatal("no JSON")
+	}
+	buildSingBox(t, *raw)
+}

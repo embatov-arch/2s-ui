@@ -18,7 +18,28 @@ test('template shape refused without losing original',()=>{for(let raw of ['null
 test('disable DNS blocks explicit resolver dependencies',()=>assert.throws(()=>toggleDns(seed(),false,{}),/default_domain_resolver/))
 test('disable removes only exact hijack, not reject or unrelated rule',()=>{let t=seed();delete t.default_domain_resolver;t.rules.unshift({protocol:['dns'],action:'hijack-dns'},{protocol:'dns',action:'reject'});let out=toggleDns(t,false,{});assert.equal(out.dns,undefined);assert.deepEqual(out.rules,t.rules.slice(1))})
 test('custom hijack dependency refused',()=>{let t=seed();delete t.default_domain_resolver;t.rules.unshift({protocol:'dns',inbound:['tun'],action:'hijack-dns'});assert.throws(()=>toggleDns(t,false,{}),/custom rules/)})
-test('enable preserves explicit empty and custom routing',()=>{const d={servers:[{tag:'local',type:'local'}]};let t={rules:[]};assert.deepEqual(toggleDns(t,true,d).rules,[]);const rules=seed().rules;assert.deepEqual(toggleDns({rules},true,d).rules,rules);let x=toggleDns({},true,d);assert.deepEqual(x.rules.map(r=>r.action),['sniff','hijack-dns','route','route']);x.dns.servers[0].tag='other';assert.equal(d.servers[0].tag,'local')})
+test('enable restores DNS interception and preserves existing routing', () => {
+  const d = { servers: [{ tag: 'local', type: 'local' }] }
+  const sniff = { action: 'sniff' }
+  const hijack = { protocol: 'dns', action: 'hijack-dns' }
+
+  assert.deepEqual(toggleDns({rules: []}, true, d).rules, [sniff, hijack])
+
+  const rules = seed().rules
+  const expected = [rules[0], hijack, ...rules.slice(1)]
+  assert.deepEqual(toggleDns({rules}, true, d).rules, expected)
+
+  const enabled = toggleDns({rules}, true, d)
+  assert.deepEqual(toggleDns(enabled, true, d), enabled)
+
+  const custom = [{port: 53, action: 'hijack-dns'}]
+  assert.deepEqual(toggleDns({rules: custom}, true, d).rules, custom)
+
+  const x = toggleDns({}, true, d)
+  assert.deepEqual(x.rules.map(r => r.action), ['sniff', 'hijack-dns', 'route', 'route'])
+  x.dns.servers[0].tag = 'other'
+  assert.equal(d.servers[0].tag, 'local')
+})
 test('unknown future DNS options roundtrip unchanged',()=>{let t=seed();t.dns.rules[0].dns_server_address=['1.1.1.1'];t.dns.servers[0].future={a:1};const next=editDns(t,x=>{x.dns.strategy='ipv4_only'});assert.deepEqual(next.dns.rules,t.dns.rules);assert.deepEqual(next.dns.servers,t.dns.servers)})
 
 test('named evaluate cannot be duplicated',()=>assert.throws(()=>editDns(seed(),x=>x.dns.rules.splice(1,0,{action:'evaluate',server:'local',tag:'cf'})),/duplicate evaluate/))
@@ -29,3 +50,12 @@ test('explicit resolver cycle refused',()=>assert.throws(()=>editDns(seed(),x=>{
 test('duplicate rule-set tags refused',()=>assert.throws(()=>editDns(seed(),x=>{x.rule_set=[{tag:'a'},{tag:'a'}]}),/duplicate tag/))
 test('malformed refs refused without silently dropping members',()=>assert.throws(()=>editDns(seed(),x=>{x.dns.rules[1].rule_set=[1]}),/expected string/))
 test('evaluate fakeip refused',()=>assert.throws(()=>editDns(seed(),x=>{x.dns.servers[0].type='fakeip'}),/fakeip/))
+
+
+test('implicit DNS tags follow native array indices', () => {
+  const t = {dns:{servers:[{type:'local'}, {type:'local'}], final:'1'}}
+  assert.doesNotThrow(() => validateDns(t))
+  assert.throws(() => editDns(t, x => { x.dns.final = 'missing' }))
+  assert.throws(() => editDns(t, x => { x.dns.servers[1].tag = '0' }))
+  assert.deepEqual(editDns(t, x => { x.dns.strategy = 'ipv4_only' }).dns.servers, t.dns.servers)
+})
