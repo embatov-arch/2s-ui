@@ -29,8 +29,8 @@
       <div class="dns-list-body">
         <div v-for="(server, i) in servers" :key="i" class="sub-dns-row">
           <button type="button" class="sub-dns-desc" :aria-label="$t('actions.edit') + ' ' + (dnsServerTag(server, i))" :disabled="!!draft || !!pending" :title="`${dnsServerTag(server, i)} · ${server.type || $t('subscriptionDns.legacy')} · ${server.server || '—'}`" @click="openItem('server', i)">
-            <strong>{{ dnsServerTag(server, i) }}</strong><span class="mono">{{ server.type || $t('subscriptionDns.legacy') }}<template v-if="server.server"> · {{ server.server }}<template v-if="server.server_port">:{{ server.server_port }}</template></template></span>
             <Ico name="edit" :size="16" class="dns-row-edit" />
+            <strong>{{ dnsServerTag(server, i) }}</strong><span class="mono">{{ server.type || $t('subscriptionDns.legacy') }}<template v-if="server.server"> · {{ server.server }}<template v-if="server.server_port">:{{ server.server_port }}</template></template></span>
           </button>
           <Btn sm icon variant="subtle" class="dns-icon dns-delete" :aria-label="$t('actions.del')" :title="$t('actions.del')" :disabled="!!draft || !!pending" @click="askRemove('server', i)"><Ico name="trash" :size="16" /></Btn>
         </div>
@@ -44,8 +44,8 @@
       <div class="dns-list-body">
         <div v-for="(rule, i) in rules" :key="i" class="sub-dns-row">
           <button type="button" class="sub-dns-desc" :aria-label="$t('actions.edit') + ' ' + $t('objects.dnsrule') + ' #' + (i + 1)" :title="ruleSummary(rule)" :disabled="!!draft || !!pending" @click="openItem('rule', i)">
-            <span class="dns-num">{{ i + 1 }}.</span><strong>{{ rule.action || 'route' }}<template v-if="rule.server"> → {{ rule.server }}</template></strong><span class="mono">{{ ruleSummary(rule) }}</span>
             <Ico name="edit" :size="16" class="dns-row-edit" />
+            <span class="dns-num">{{ i + 1 }}.</span><strong>{{ rule.action || 'route' }}<template v-if="rule.server"> → {{ rule.server }}</template></strong><span class="mono">{{ ruleSummary(rule) }}</span>
           </button>
           <Btn sm icon variant="subtle" class="dns-icon" :aria-label="$t('subscriptionDns.up') + ' ' + (i + 1)" :title="$t('subscriptionDns.up')" :disabled="!!draft || !!pending || i === 0" @click="move(i, -1)"><Ico name="chevronDown" :size="16" style="transform:rotate(180deg)" /></Btn>
           <Btn sm icon variant="subtle" class="dns-icon" :aria-label="$t('subscriptionDns.down') + ' ' + (i + 1)" :title="$t('subscriptionDns.down')" :disabled="!!draft || !!pending || i === rules.length - 1" @click="move(i, 1)"><Ico name="chevronDown" :size="16" /></Btn>
@@ -193,11 +193,11 @@ watch(() => props.config, () => { draft.value = null; pending.value = null })
 .dns-list-body { display:flex; flex-direction:column; gap:0; }
 
 .sub-dns-row { display:flex; align-items:center; gap:2px; min-height:34px; padding:0; border-bottom:1px solid var(--line); }
-.sub-dns-desc { flex:1 1 0; min-width:0; display:flex; align-items:baseline; gap:6px; background:transparent; border:0; text-align:start; color:inherit; cursor:pointer; padding:4px 0; font:inherit; }
+.sub-dns-desc { flex:1 1 0; min-width:0; display:flex; align-items:center; min-height:40px; margin-inline-end:12px; gap:6px; background:transparent; border:0; text-align:start; color:inherit; cursor:pointer; padding:4px 0; font:inherit; }
 .sub-dns-desc strong { font-size:13px; font-weight:600; flex:0 0 auto; min-width:0; max-width:65%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sub-dns-desc span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--text-2); }
 .sub-dns-desc .dns-num { flex:0 0 auto; }
-.dns-row-edit { flex:0 0 auto; margin-inline-start:auto; color:var(--text-2); }
+.dns-row-edit { flex:0 0 auto; margin-inline-end:4px; color:var(--text-2); }
 .dns-icon { flex:none; }
 .sub-dns-desc:hover:not(:disabled) { background:var(--surface-3); }
 .sub-dns-desc .mono { flex:1 1 0; }
