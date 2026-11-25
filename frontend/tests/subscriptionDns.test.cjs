@@ -59,3 +59,32 @@ test('implicit DNS tags follow native array indices', () => {
   assert.throws(() => editDns(t, x => { x.dns.servers[1].tag = '0' }))
   assert.deepEqual(editDns(t, x => { x.dns.strategy = 'ipv4_only' }).dns.servers, t.dns.servers)
 })
+
+test('grouped rule-set tags are accepted, and overlapping tags rejected', () => {
+  const t = seed()
+  const group = { type: 'remote', tag: ['one', 'two'], url: 'https://example.org/{tag}.srs' }
+  t.rule_set = [group]
+  t.dns.rules.push({ action: 'route', server: 'local', rule_set: ['one', 'two'] })
+  assert.doesNotThrow(() => validateDns(t))
+  assert.deepEqual(editDns(t, x => { x.dns.strategy = 'ipv4_only' }).rule_set, [group])
+  assert.throws(() => editDns(t, x => x.rule_set.push({ tag: 'two' })), /duplicate tag two/)
+})
+test('DNS address and search-domain dependencies survive logical DNS and route rules', () => {
+  for (const field of ['dns_server_address', 'dns_search_domain']) {
+    const value = field === 'dns_server_address' ? ['192.0.2.1/32'] : ['example.org']
+    for (const location of ['dns', 'route']) {
+      const t = { dns: { servers: [{ tag: 'keep', type: 'local' }, { tag: 'remove', type: 'local' }] } }
+      const logical = { type: 'logical', mode: 'and', rules: [{ [field]: { remove: value } }], action: 'route' }
+      if (location === 'dns') t.dns.rules = [{ ...logical, server: 'keep' }]
+      else t.rules = [{ ...logical, outbound: 'direct' }]
+      assert.doesNotThrow(() => validateDns(t))
+      assert.throws(() => editDns(t, x => x.dns.servers.pop()), /unknown DNS tag remove/)
+      if (location === 'route') assert.throws(() => toggleDns(t, false, {}), /custom rules/)
+    }
+  }
+})
+test('route preferred_by still refers to outbounds, not DNS servers', () => {
+  const t = seed()
+  t.rules.push({ preferred_by: ['wireguard'], action: 'route', outbound: 'direct' })
+  assert.doesNotThrow(() => validateDns(t))
+})

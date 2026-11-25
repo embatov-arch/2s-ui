@@ -352,3 +352,15 @@ test('Explicit and implicit DNS tags remain stable together', t => {
   assert.deepEqual(plain(s.tags.value),
     ['1','cloudflare','9'])
 })
+
+test('grouped rule-set tags appear individually in the existing selector', t => {
+  const { props, state: s } = harness(t)
+  const group = { type: 'remote', tag: ['geosite-cn', 'custom-a', 'custom-b'], url: 'https://example.org/{tag}.srs' }
+  props.config.rule_set = [group]
+  assert.deepEqual(plain(s.ruleOptions.value).map(o => o.value), ['geosite-private', 'geosite-cn', 'custom-a', 'custom-b'])
+  s.openItem('rule', 2)
+  s.patchSets(['geosite-cn', 'custom-b'])
+  s.saveDraft()
+  assert.deepEqual(plain(props.config.rule_set), [group])
+  assert.deepEqual(plain(props.config.dns.rules[2].rule_set), ['geosite-cn', 'custom-b'])
+})

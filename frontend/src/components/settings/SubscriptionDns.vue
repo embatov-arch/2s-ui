@@ -103,6 +103,7 @@ import { moveItem } from '@/plugins/useReorder'
 import ChipSelect from '@/components/ui/ChipSelect.vue'
 import { createDnsServer, dnsServerTypeOptions, dnsServerTypesWithAddress } from '@/types/dns'
 import { editDns, isObject, resolverTag, setResolver, refs, dnsServerTag, type Catalog } from '@/plugins/subscriptionDns'
+import { ruleSetTags } from '@/plugins/subscriptionRuleSets'
 const props = defineProps<{ config: Record<string, any>; catalog: Catalog; catalogOptions: readonly { title: string; value: string }[] }>()
 const emit = defineEmits<{ 'update:config': [value: Record<string, any>] }>()
 const { t: translate } = useI18n()
@@ -124,7 +125,7 @@ const draftTitle = computed(() => {
   return translate('actions.edit') + ' · ' + name + ' · JSON'
 })
 const ruleOptions = computed(() => {
-  const available = new Set([...props.catalog.map(r => r.tag), ...(props.config.rule_set ?? []).map((r: any) => r.tag)].filter(t => typeof t === 'string' && t))
+  const available = new Set([...props.catalog.map(r => r.tag), ...(props.config.rule_set ?? []).flatMap((r: any) => ruleSetTags(r.tag))].filter(t => typeof t === 'string' && t))
   const result = props.catalogOptions.filter(o => available.delete(o.value))
   return [...result, ...Array.from(available, value => ({ title: value, value }))]
 })

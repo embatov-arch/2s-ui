@@ -60,3 +60,9 @@ test('unknown references not fabricated or removed', () => {
   const t = { dns: { rules: [{ rule_set: 'unknown' }] } }
   assert.deepEqual(run(t), { dns: { rules: [{ rule_set: 'unknown' }] } })
 })
+
+test('grouped rule-set definitions remain intact and prevent duplicate catalog insertion', () => {
+  const group = { type: 'remote', tag: ['geosite-cn', 'custom'], url: 'https://example.org/{tag}.srs' }
+  const t = { rule_set: [group], dns: { rules: [{ rule_set: ['geosite-cn', 'custom', 'geosite-private'] }] } }
+  assert.deepEqual(run(t).rule_set, [group, catalog[0]])
+})

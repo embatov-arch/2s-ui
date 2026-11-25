@@ -2,6 +2,12 @@
 // including inside logical rules. Do not rebuild the user's catalog.
 type CatalogEntry = { tag: string }
 
+// sing-box 1.14 accepts multiple tags in a single local or remote definition.
+export function ruleSetTags(value: unknown): string[] {
+  const tags = typeof value === 'string' ? [value] : value
+  return Array.isArray(tags) && tags.length > 0 && tags.every(t => typeof t === 'string' && t !== '') ? tags : []
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -23,9 +29,9 @@ function collectRuleSetTags(rules: unknown, tags: Set<string>): void {
 export function appendMissingRuleSets(template: Record<string, unknown>, catalog: readonly CatalogEntry[]): void {
   const existing = template.rule_set
   // Leave malformed user data intact. Validation belongs to the save path.
-  if (existing !== undefined && (!Array.isArray(existing) || existing.some(r => !isObject(r) || typeof r.tag !== 'string'))) return
+  if (existing !== undefined && (!Array.isArray(existing) || existing.some(r => !isObject(r) || !ruleSetTags(r.tag).length))) return
   const current = Array.isArray(existing) ? existing : []
-  const known = new Set(current.map(r => r.tag))
+  const known = new Set(current.flatMap(r => ruleSetTags(r.tag)))
   const tags = new Set<string>()
   if (isObject(template.dns)) collectRuleSetTags(template.dns.rules, tags)
   collectRuleSetTags(template.rules, tags)

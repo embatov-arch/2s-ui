@@ -1,4 +1,4 @@
-import { appendMissingRuleSets } from './subscriptionRuleSets'
+import { appendMissingRuleSets, ruleSetTags } from './subscriptionRuleSets'
 
 type Obj = Record<string, any>
 export type Catalog = readonly { tag: string }[]
@@ -67,15 +67,23 @@ export function validateDns(t: Obj): void {
   }
   const catalog = new Set<string>()
   for (const r of t.rule_set ?? []) {
-    if (typeof r.tag !== 'string' || !r.tag) fail('rule_set: tag required')
-    if (catalog.has(r.tag)) fail('rule_set: duplicate tag ' + r.tag)
-    catalog.add(r.tag)
+    const defined = ruleSetTags(r.tag)
+    if (!defined.length) fail('rule_set: tag required')
+    for (const tag of defined) {
+      if (catalog.has(tag)) fail('rule_set: duplicate tag ' + tag)
+      catalog.add(tag)
+    }
   }
   const checkedRefs = (value: unknown, path: string): string[] => {
     if (value == null) return []
     if (typeof value === 'string') return [value]
     if (!Array.isArray(value) || !value.every(x => typeof x === 'string')) return fail(path + ': expected string or list of strings')
     return value
+  }
+  const checkDNSMatchTags = (r: Obj, path: string) => {
+    for (const key of ['dns_server_address', 'dns_search_domain']) {
+      if (isObject(r[key])) for (const tag of Object.keys(r[key])) checkTag(tag, path + '.' + key)
+    }
   }
   const namedMatch = (r: Obj): boolean => typeof r.match_response === 'string' || (Array.isArray(r.rules) && r.rules.some((child: unknown) => isObject(child) && namedMatch(child)))
   const evaluated = new Set<string>()
@@ -96,6 +104,7 @@ export function validateDns(t: Obj): void {
         if (typeof match !== 'string' && !evaluated.has('')) fail(p + ': preceding untagged evaluate required')
       }
       for (const tag of checkedRefs(r.preferred_by, p + '.preferred_by')) checkTag(tag, p + '.preferred_by')
+      checkDNSMatchTags(r, p)
       for (const tag of checkedRefs(r.rule_set, p + '.rule_set')) if (!catalog.has(tag)) fail(p + '.rule_set: unknown tag ' + tag)
       checkRules(r.rules, p + '.rules', false)
       if (top && r.action === 'evaluate') {
@@ -113,6 +122,8 @@ export function validateDns(t: Obj): void {
     if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${path}[${i}]`)); return }
     if (!isObject(v)) return
     if (v.action === 'resolve') checkTag(v.server, path + '.server')
+    // Route preferred_by names outbounds, not DNS servers.
+    checkDNSMatchTags(v, path)
     if ('domain_resolver' in v) checkResolver(v.domain_resolver, path + '.domain_resolver')
     if (Array.isArray(v.rules)) walk(v.rules, path + '.rules')
   }
@@ -139,7 +150,9 @@ const plainHijack = (r: Obj) => r.action === 'hijack-dns' && Object.keys(r).leng
 const hasDependency = (v: unknown): boolean => {
   if (Array.isArray(v)) return v.some(hasDependency)
   if (!isObject(v)) return false
-  return v.action === 'hijack-dns' || (v.action === 'resolve' && !!v.server) || !!v.domain_resolver || Object.values(v).some(hasDependency)
+  return v.action === 'hijack-dns' || (v.action === 'resolve' && !!v.server) || !!v.domain_resolver ||
+    ['dns_server_address', 'dns_search_domain'].some(key => isObject(v[key]) && Object.keys(v[key]).length > 0) ||
+    Object.values(v).some(hasDependency)
 }
 export function toggleDns(t: Obj, enabled: boolean, defaults: Obj): Obj {
   const next = copy(t)
