@@ -21,7 +21,7 @@
       <!-- 证书页的每个操作都立即生效，没有待保存的表单，摆着保存/重启只会让人以为
            申请完证书还得再点一下 -->
       <div v-if="tab !== 'certs'" class="head-actions">
-        <Btn variant="primary" sm :loading="loading" :disabled="!stateChange || proxyBlocked" @click="save">
+        <Btn variant="primary" sm :loading="loading" :disabled="!settingsLoaded || !stateChange || proxyBlocked" @click="save">
           <Ico name="check" :size="15" /> {{ $t('actions.save') }}
         </Btn>
         <Pop :min-width="210">
@@ -137,6 +137,10 @@
     </SettingsGroup>
 
     <!-- ===================== JSON sub ===================== -->
+    <SettingsGroup v-else-if="tab === 'jsonSub' && jsonTemplateError">
+      <div role="alert" style="color:var(--rose); overflow-wrap:anywhere;">{{ jsonTemplateError }}</div>
+      <Btn sm @click="jsonEditor = true"><Ico name="edit" :size="14" /> {{ $t('editor') }}</Btn>
+    </SettingsGroup>
     <SettingsGroup v-else-if="tab === 'jsonSub'">
       <div class="json-compact-section json-compact-rules" :title="$t('ui.jsonExtDesc')">
         <div class="android-heading">{{ $t('pages.rules') }}</div>
@@ -152,46 +156,7 @@
           <Ico name="chevronDown" :size="14" class="json-compact-chevron" />
         </summary>
         <div class="json-compact-content">
-        <div class="field-grid">
-          <Field :label="$t('dns.final')" :mb="0">
-            <Select v-model="subJsonExt.dns.final">
-              <option v-for="tg in dnsTags" :key="tg" :value="tg">{{ tg }}</option>
-            </Select>
-          </Field>
-          <Field :label="$t('basic.routing.defaultDns')" :mb="0">
-            <Select v-model="defaultResolver">
-              <option value="">{{ $t('ui.none') }}</option>
-              <option v-for="tg in dnsTags" :key="tg" :value="tg">{{ tg }}</option>
-            </Select>
-          </Field>
-        </div>
-        <div class="grid2" style="margin-top: 14px;">
-          <Field :label="$t('setting.globalDns')" :mb="0">
-            <div style="display: flex; gap: 8px;">
-              <Select style="flex: 1; min-width: 0;" :model-value="proxyDns.type" @change="setDnsType(proxyDns, $event)">
-                <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
-              </Select>
-              <template v-if="proxyDns.type !== 'local'">
-                <input class="input mono" style="flex: 1.5; min-width: 0;" v-model="proxyDns.server" :placeholder="$t('in.addr')" />
-                <input class="input mono" style="width: 76px; flex: none;" type="number" min="1" v-model.number="proxyDns.server_port" :placeholder="$t('in.port')" />
-              </template>
-            </div>
-          </Field>
-          <Field :label="$t('setting.directDns')" :mb="0">
-            <div style="display: flex; gap: 8px;">
-              <Select style="flex: 1; min-width: 0;" :model-value="directDns.type" @change="setDnsType(directDns, $event)">
-                <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
-              </Select>
-              <template v-if="directDns.type !== 'local'">
-                <input class="input mono" style="flex: 1.5; min-width: 0;" v-model="directDns.server" :placeholder="$t('in.addr')" />
-                <input class="input mono" style="width: 76px; flex: none;" type="number" min="1" v-model.number="directDns.server_port" :placeholder="$t('in.port')" />
-              </template>
-            </div>
-          </Field>
-        </div>
-        <div style="margin-top: 14px;">
-          <ChipSelect v-model="dnsToDirect" :options="geositeList" :label="$t('setting.toDirectDns')" :placeholder="$t('ui.selectHint')" />
-        </div>
+          <SubscriptionDns v-model:config="subJsonExt" :catalog="geo" />
         </div>
       </details>
       <details v-if="enableInb" class="json-compact-section">
@@ -487,9 +452,13 @@ import ToggleRow from '@/components/ui/ToggleRow.vue'
 import DomainInput from '@/components/ui/DomainInput.vue'
 import CertsPanel from '@/components/settings/CertsPanel.vue'
 import { loadCerts, certsLoaded, findCert, daysLeft } from '@/plugins/certs'
+import SubscriptionDns from '@/components/settings/SubscriptionDns.vue'
+import { parseTemplate, validateDns, toggleDns, copy } from '@/plugins/subscriptionDns'
+import { appendMissingRuleSets } from '@/plugins/subscriptionRuleSets'
 
 const tab = ref('interface')
 const loading = ref(false)
+const settingsLoaded = ref(false)
 // 保存时要跟当前值逐字段比对,判断反代配置需不需要重新生成(见 save)
 const oldSettings = ref<Record<string, any>>({})
 const jsonEditor = ref(false)
@@ -663,6 +632,7 @@ const loadData = async () => {
   loading.value = false
   if (msg.success) {
     setData(msg.obj)
+    settingsLoaded.value = true
   }
 }
 
@@ -689,6 +659,11 @@ const proxyInputs = [
 ]
 
 const save = async () => {
+  if (!settingsLoaded.value) return
+  if (settings.value.subJsonExt !== oldSettings.value.subJsonExt) {
+    try { validateDns(parseTemplate(settings.value.subJsonExt)) }
+    catch (e) { push.error({ message: String(e), duration: 7000 }); return }
+  }
   const now = settings.value as Record<string, any>
   const before = oldSettings.value
   const webOn = now.webNginx === 'true'
@@ -1226,7 +1201,6 @@ const proxyBlocked = computed(() => {
 const subJsonExt = ref<any>({})
 
 const levels = ["trace", "debug", "info", "warn", "error", "fatal", "panic"]
-const dnsTypes = ['udp', 'tcp', 'local', 'tls', 'quic', 'h3']
 
 const defaultLog = {
   "level": "info",
@@ -1324,14 +1298,6 @@ const defaultDns = {
   "strategy": "prefer_ipv4"
 }
 
-const geositeList = [
-  { title: "Private", value: "geosite-private" },
-  { title: "Ads", value: "geosite-ads" },
-  { title: "🇮🇷 Iran", value: "geosite-ir" },
-  { title: "🇨🇳 China", value: "geosite-cn" },
-  { title: "🇻🇳 Vietnam", value: "geosite-vn" },
-]
-
 const geoList = [
   { title: "Site-Private", value: "geosite-private" },
   { title: "IP-Private", value: "geoip-private" },
@@ -1411,43 +1377,44 @@ const geo = [
 ]
 
 // 解析 settings.subJsonExt → 本地对象;并按旧实现把规范化后的 JSON 回写
+const jsonTemplateError = ref('')
+let loadingTemplate = false
 const loadSubJsonExt = () => {
-  const s: string = settings.value.subJsonExt ?? ''
-  if (s.length > 0) {
-    try {
-      const parsed = JSON.parse(s)
-      subJsonExt.value = parsed
-      settings.value.subJsonExt = Object.keys(parsed).length > 0 ? JSON.stringify(parsed, null, 2) : ''
-    } catch (e) {
-      // 数据库里是坏 JSON:保留原始字符串不动(与旧版一致,不在这里破坏数据)
-    }
-  } else {
+  loadingTemplate = true
+  disabledDnsDraft = undefined
+  try {
+    subJsonExt.value = parseTemplate(settings.value.subJsonExt ?? '')
+    jsonTemplateError.value = ''
+  } catch (e) {
+    // Preserve the stored raw JSON. Show only the editor until it is repaired.
     subJsonExt.value = {}
-  }
+    jsonTemplateError.value = String(e)
+  } finally { loadingTemplate = false }
 }
-
 watch(subJsonExt, (v) => {
+  if (loadingTemplate || jsonTemplateError.value) return
   settings.value.subJsonExt = Object.keys(v).length > 0 ? JSON.stringify(v, null, 2) : ''
-}, { deep: true })
+}, { deep: true, flush: 'sync' })
 
 const enableLog = computed({
   get: (): boolean => subJsonExt.value?.log != undefined,
   set: (v: boolean) => { v ? subJsonExt.value.log = defaultLog : delete subJsonExt.value.log }
 })
 
+// The DNS toggle is a transaction on the current template, not a second source of truth.
+let disabledDnsDraft: { before: any; after: string } | undefined
 const enableDns = computed({
   get: (): boolean => subJsonExt.value?.dns != undefined,
   set: (v: boolean) => {
-    if (v) {
-      subJsonExt.value.dns = defaultDns
-      if (rules.value == undefined) subJsonExt.value.rules = [{ action: 'sniff' }]
-      subJsonExt.value.rules.unshift({ protocol: "dns", action: "hijack-dns" })
-    } else {
-      delete subJsonExt.value.dns
-      const newRules = subJsonExt.value?.rules?.filter((r: any) => r.protocol != "dns") ?? []
-      if (newRules.length >= 0) subJsonExt.value.rules = newRules
-      if (rules.value?.length == 0) delete subJsonExt.value.rules
-    }
+    try {
+      if (!v && !window.confirm(i18n.global.t('confirm') + ' · DNS')) return
+      const before = subJsonExt.value
+      const next = v && disabledDnsDraft?.after === JSON.stringify(before)
+        ? copy(disabledDnsDraft.before) : toggleDns(before, v, defaultDns)
+      if (v) disabledDnsDraft = undefined
+      else disabledDnsDraft = { before: copy(before), after: JSON.stringify(next) }
+      subJsonExt.value = next
+    } catch (e) { push.error({ message: String(e), duration: 7000 }) }
   }
 })
 
@@ -1614,51 +1581,6 @@ const enableExp = computed({
   set: (v: boolean) => { v ? subJsonExt.value.experimental = defaultExp : delete subJsonExt.value.experimental }
 })
 
-const dns = computed((): any => subJsonExt.value?.dns ?? undefined)
-
-const proxyDns = computed((): any => dns.value?.servers?.findLast((d: any) => d.tag == "proxy-dns") ?? {})
-
-const directDns = computed((): any => dns.value?.servers?.findLast((d: any) => d.tag == "direct-dns") ?? {})
-
-// 平移旧 SimpleDNS:切到 local 时去掉 server / server_port
-const setDnsType = (server: any, t: string) => {
-  server.type = t
-  if (t == 'local') {
-    delete server.server
-    delete server.server_port
-  }
-}
-
-const dnsTags = computed((): string[] => dns.value?.servers?.map((d: any) => d.tag) ?? [])
-
-const defaultResolver = computed({
-  get: (): string => subJsonExt.value?.default_domain_resolver ?? '',
-  set: (v: string) => {
-    if (v) subJsonExt.value.default_domain_resolver = v
-    else delete subJsonExt.value.default_domain_resolver
-  }
-})
-
-const dnsToDirect = computed({
-  get: (): string[] => {
-    const ruleIndex = dns.value?.rules?.findIndex((r: any) => r.server == "direct-dns" && Object.hasOwn(r, 'rule_set')) ?? -1
-    return ruleIndex >= 0 ? dns.value.rules[ruleIndex].rule_set : []
-  },
-  set: (v: string[]) => {
-    const ruleIndex = dns.value?.rules?.findIndex((r: any) => r.server == "direct-dns" && Object.hasOwn(r, 'rule_set')) ?? -1
-    if (v.length > 0) {
-      if (ruleIndex >= 0) {
-        dns.value.rules[ruleIndex].rule_set = v
-      } else {
-        dns.value.rules.push({ rule_set: v, action: "route", server: "direct-dns" })
-      }
-    } else {
-      if (ruleIndex != -1) dns.value.rules.splice(ruleIndex, 1)
-    }
-    updateRuleSets()
-  }
-})
-
 const inbounds = computed((): any => subJsonExt.value?.inbounds ?? undefined)
 
 const tunAddress = computed({
@@ -1727,34 +1649,19 @@ const ruleToBlock = computed({
 })
 
 const updateRuleSets = () => {
-  const tags = <string[]>[]
-  if ((dns.value?.rules?.length ?? 0) > 0) dns.value.rules.forEach((r: any) => { if (r.rule_set) tags.push(...r.rule_set) })
-  if ((rules.value?.length ?? 0) > 0) rules.value.forEach((r: any) => { if (r.rule_set) tags.push(...r.rule_set) })
-  // The list is rebuilt from the selectors, so anything the operator added by
-  // hand in the JSON editor has to be carried over or a single chip click
-  // silently drops it. That editor takes any JSON, so the stored value is not
-  // necessarily an array.
-  const existing = subJsonExt.value?.rule_set
-  const list: any[] = Array.isArray(existing) ? existing : []
-  const byTag = new Map(list.map((rs: any) => [rs.tag, rs]))
-  const custom = list.filter((rs: any) => !geo.some((g: any) => g.tag == rs.tag))
-  if (tags.length > 0 || custom.length > 0) {
-    subJsonExt.value.rule_set = [
-      // A catalog entry the operator already edited wins over the catalog --
-      // swapping the jsDelivr URL for a mirror has to survive a chip click.
-      // The trade-off is that later catalog fixes no longer reach them.
-      ...geo.filter((g: any) => tags.includes(g.tag)).map((g: any) => byTag.get(g.tag) ?? g),
-      ...custom,
-    ]
-  } else {
-    delete subJsonExt.value.rule_set
-  }
+  appendMissingRuleSets(subJsonExt.value, geo)
+  // Preserve existing route-selector semantics. DNS uses its own transaction
+  // and never deletes an explicitly empty route.rules array.
   if (rules.value?.length == 0) delete subJsonExt.value.rules
 }
 
 const saveJsonEditor = (data: string) => {
   try {
-    subJsonExt.value = JSON.parse(data)
+    const next = parseTemplate(data)
+    validateDns(next)
+    jsonTemplateError.value = ''
+    disabledDnsDraft = undefined
+    subJsonExt.value = next
   } catch (e) {
     push.error({
       message: i18n.global.t('failed') + ": " + i18n.global.t('error.invalidData'),

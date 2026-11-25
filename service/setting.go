@@ -858,6 +858,20 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 	for key, value := range settings {
 		settings[key] = strings.TrimSpace(value)
 	}
+	// Validate only a changed JSON subscription; legacy data and unrelated
+	// settings are not rewritten or blocked during an upgrade.
+	if proposed, ok := settings["subJsonExt"]; ok {
+		var current model.Setting
+		err := tx.Where("key = ?", "subJsonExt").First(&current).Error
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return err
+		}
+		if proposed != strings.TrimSpace(current.Value) {
+			if err := util.ValidateSubscriptionDNS(proposed); err != nil {
+				return err
+			}
+		}
+	}
 	newZone, hasZone := settings["timeLocation"]
 	var oldZone string
 	if hasZone {

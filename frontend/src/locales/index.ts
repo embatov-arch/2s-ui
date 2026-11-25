@@ -5,14 +5,15 @@ import vi from './vi'
 import zhcn from './zhcn'
 import zhtw from './zhtw'
 import ru from './ru'
+import { subscriptionDnsMessages } from './subscriptionDns'
 
 const messages = {
-  en: en,
-  fa: fa,
-  vi: vi,
-  zhHans: zhcn,
-  zhHant: zhtw,
-  ru: ru
+  en: { ...en, subscriptionDns: subscriptionDnsMessages.en },
+  fa: { ...fa, subscriptionDns: subscriptionDnsMessages.fa },
+  vi: { ...vi, subscriptionDns: subscriptionDnsMessages.vi },
+  zhHans: { ...zhcn, subscriptionDns: subscriptionDnsMessages.zhHans },
+  zhHant: { ...zhtw, subscriptionDns: subscriptionDnsMessages.zhHant },
+  ru: { ...ru, subscriptionDns: subscriptionDnsMessages.ru }
 }
 
 // A stored locale this build has no messages for (another build's, or edited

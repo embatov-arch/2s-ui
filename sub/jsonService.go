@@ -689,7 +689,7 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}, outbounds []
 	if settingRules, ok := othersJson["rules"].([]interface{}); ok {
 		route["rules"] = settingRules
 	}
-	if defaultDomainResolver, ok := othersJson["default_domain_resolver"].(string); ok && defaultDomainResolver != "" {
+	if defaultDomainResolver, ok := util.ExplicitSubscriptionResolver(othersJson["default_domain_resolver"]); ok {
 		route["default_domain_resolver"] = defaultDomainResolver
 	} else if fallback := fallbackDomainResolver(othersJson); fallback != "" {
 		// With more than one DNS server and no resolver named for dial fields,
