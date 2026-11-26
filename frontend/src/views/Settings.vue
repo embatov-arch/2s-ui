@@ -398,7 +398,7 @@ import CertsPanel from '@/components/settings/CertsPanel.vue'
 import { loadCerts, certsLoaded, findCert, daysLeft } from '@/plugins/certs'
 import SubscriptionDns from '@/components/settings/SubscriptionDns.vue'
 import { parseTemplate, validateDns, toggleDns, copy, refs } from '@/plugins/subscriptionDns'
-import { appendMissingRuleSets } from '@/plugins/subscriptionRuleSets'
+import { syncRuleSets, referencedRuleSets } from '@/plugins/subscriptionRuleSets'
 
 const tab = ref('interface')
 const loading = ref(false)
@@ -1354,6 +1354,7 @@ const enableDns = computed({
       const before = subJsonExt.value
       const next = v && disabledDnsDraft?.after === JSON.stringify(before)
         ? toggleDns(disabledDnsDraft.before, true, defaultDns) : toggleDns(before, v, defaultDns)
+      syncRuleSets(next, geo, referencedRuleSets(before))
       if (v) disabledDnsDraft = undefined
       else disabledDnsDraft = { before: copy(before), after: JSON.stringify(next) }
       subJsonExt.value = next
@@ -1402,6 +1403,7 @@ const ruleToDirect = computed({
     return ruleIndex >= 0 ? refs(rules.value[ruleIndex].rule_set) : []
   },
   set: (v: string[]) => {
+    const before = referencedRuleSets(subJsonExt.value)
     const ruleIndex = rules.value?.findIndex((r: any) => r.outbound == "direct" && Object.hasOwn(r, 'rule_set')) ?? -1
     if (v.length > 0) {
       if (ruleIndex >= 0) {
@@ -1413,7 +1415,7 @@ const ruleToDirect = computed({
     } else {
       if (ruleIndex != -1) rules.value.splice(ruleIndex, 1)
     }
-    updateRuleSets()
+    updateRuleSets(before)
   }
 })
 
@@ -1423,6 +1425,7 @@ const ruleToBlock = computed({
     return ruleIndex >= 0 ? refs(rules.value[ruleIndex].rule_set) : []
   },
   set: (v: string[]) => {
+    const before = referencedRuleSets(subJsonExt.value)
     const ruleIndex = rules.value?.findIndex((r: any) => r.action == "reject" && Object.hasOwn(r, 'rule_set')) ?? -1
     if (v.length > 0) {
       if (ruleIndex >= 0) {
@@ -1434,12 +1437,12 @@ const ruleToBlock = computed({
     } else {
       if (ruleIndex != -1) rules.value.splice(ruleIndex, 1)
     }
-    updateRuleSets()
+    updateRuleSets(before)
   }
 })
 
-const updateRuleSets = () => {
-  appendMissingRuleSets(subJsonExt.value, geo)
+const updateRuleSets = (before: ReadonlySet<string>) => {
+  syncRuleSets(subJsonExt.value, geo, before)
   // Preserve existing route-selector semantics. DNS uses its own transaction
   // and never deletes an explicitly empty route.rules array.
   if (rules.value?.length == 0) delete subJsonExt.value.rules

@@ -102,7 +102,7 @@ import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import { moveItem } from '@/plugins/useReorder'
 import ChipSelect from '@/components/ui/ChipSelect.vue'
 import { createDnsServer, dnsServerTypeOptions, dnsServerTypesWithAddress } from '@/types/dns'
-import { editDns, isObject, resolverTag, setResolver, refs, dnsServerTag, type Catalog } from '@/plugins/subscriptionDns'
+import { editDns, isObject, resolverTag, setResolver, refs, dnsServerTag, removeDnsServer, type Catalog } from '@/plugins/subscriptionDns'
 import { ruleSetTags } from '@/plugins/subscriptionRuleSets'
 const props = defineProps<{ config: Record<string, any>; catalog: Catalog; catalogOptions: readonly { title: string; value: string }[] }>()
 const emit = defineEmits<{ 'update:config': [value: Record<string, any>] }>()
@@ -163,18 +163,8 @@ const remove = () => {
   const p = pending.value
   if (!p) return
   commit(t => {
-    if (p.kind === 'server') {
-      const servers = t.dns.servers
-      // Preserve effective tags before their indices change.
-      for (let i = p.index + 1; i < servers.length; i++) {
-        if (servers[i].tag === undefined || servers[i].tag === '') {
-          servers[i].tag = dnsServerTag(servers[i], i)
-        }
-      }
-      servers.splice(p.index, 1)
-    } else {
-      t.dns.rules.splice(p.index, 1)
-    }
+    if (p.kind === 'server') removeDnsServer(t.dns.servers, p.index)
+    else t.dns.rules.splice(p.index, 1)
   })
   pending.value = null
 }

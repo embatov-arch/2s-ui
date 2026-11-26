@@ -1,68 +1,37 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { appendMissingRuleSets } from '../src/plugins/subscriptionRuleSets.ts'
-
-const catalog = [
-  { tag: 'geosite-private', type: 'remote', url: 'https://example.org/default.srs' },
-  { tag: 'geosite-cn', type: 'remote', url: 'https://example.org/cn.srs' },
-]
-const mirror = { ...catalog[0], url: 'https://example.org/custom.srs' }
+import { syncRuleSets, referencedRuleSets } from '../src/plugins/subscriptionRuleSets.ts'
+const catalog = [{ tag: 'a', type: 'remote', url: 'https://example.org/a.srs' }, { tag: 'b', type: 'remote', url: 'https://example.org/b.srs' }]
+const [a, b] = catalog, mirror = { ...a, url: 'https://example.org/mirror.srs' }
 const custom = { tag: 'custom', type: 'inline', rules: [{ domain: ['example.org'] }] }
-const run = (template, entries = catalog) => {
-  appendMissingRuleSets(template, entries)
-  return template
-}
-test('scalar reference preserves mirror', () => {
-  const t = { dns: { rules: [{ rule_set: mirror.tag }] }, rule_set: [mirror] }
-  assert.deepEqual(run(t).rule_set, [mirror])
+const group = { ...b, tag: ['b', 'custom'], url: 'https://example.org/{tag}.srs' }
+const rule = rule_set => ({ rule_set }), logical = tag => ({ type: 'logical', rules: [rule(tag)] })
+for (const [name, template, expected] of [
+  ['nested references', { dns: { rules: [logical('a')] }, rules: [logical(['b'])] }, catalog],
+  ['mirror and order preserved', { rule_set: [custom, mirror], rules: [rule(['b', 'a', 'b'])] }, [custom, mirror, b]],
+  ['unused definitions', { rule_set: [custom, mirror] }, [custom, mirror]],
+  ['grouped tags', { rule_set: [group], dns: { rules: [rule(['b', 'custom', 'a'])] } }, [group, a]],
+  ['empty route rules', { rules: [], dns: { rules: [rule('a')] } }, [a]],
+  ['empty catalog', { rule_set: [] }, []], ['absent catalog', {}, undefined],
+  ['unknown reference', { rules: [rule('unknown')] }, undefined],
+  ...['bad', null, [null], [{ url: 'missing-tag' }]].map(value => ['malformed catalog', { rule_set: value, rules: [rule('a')] }, value]),
+]) test(name, () => {
+  const before = structuredClone(template)
+  syncRuleSets(template, [...catalog, b]); syncRuleSets(template, catalog)
+  assert.deepEqual(template.rule_set, expected)
+  assert.deepEqual(template.dns, before.dns); assert.deepEqual(template.rules, before.rules)
+  assert.equal(Object.hasOwn(template, 'rule_set'), expected !== undefined)
 })
-test('nested DNS and route logical rules add missing sets', () => {
-  const t = { dns: { rules: [{ type: 'logical', mode: 'and', rules: [{ rule_set: mirror.tag }] }] }, rules: [{ type: 'logical', mode: 'or', rules: [{ rule_set: ['geosite-cn'] }] }] }
-  const before = structuredClone(t)
-  assert.deepEqual(run(t).rule_set, catalog)
-  assert.deepEqual(t.rules, before.rules)
-  assert.deepEqual(t.dns, before.dns)
+test('stock entries are copied, not shared', () => {
+  const t = { rules: [rule('a')] }; syncRuleSets(t, catalog); t.rule_set[0].url = 'changed'
+  assert.equal(a.url, 'https://example.org/a.srs')
 })
-test('explicit empty route rules survive DNS edits', () => {
-  const t = { rules: [], dns: { rules: [{ rule_set: mirror.tag }] } }
-  assert.deepEqual(run(t).rules, [])
-})
-test('unreferenced custom and catalog entries are preserved in order', () => {
-  const t = { rule_set: [custom, mirror], dns: { rules: [] } }
-  assert.deepEqual(run(t).rule_set, [custom, mirror])
-})
-test('existing entries win; missing entries appended in catalog order', () => {
-  const t = { rule_set: [custom, mirror], rules: [{ rule_set: ['geosite-cn', mirror.tag] }] }
-  assert.deepEqual(run(t).rule_set, [custom, mirror, catalog[1]])
-})
-test('no duplicate insertion, including duplicate catalog entries', () => {
-  const t = { rules: [{ rule_set: ['geosite-cn', 'geosite-cn'] }] }
-  run(t, [...catalog, catalog[1]])
-  run(t)
-  assert.deepEqual(t.rule_set, [catalog[1]])
-})
-test('catalog defaults are not mutated by a later edit', () => {
-  const t = run({ rules: [{ rule_set: mirror.tag }] })
-  t.rule_set[0].url = 'changed'
-  assert.equal(catalog[0].url, 'https://example.org/default.srs')
-})
-test('missing and explicit empty catalog are not materialized unnecessarily', () => {
-  assert.equal(Object.hasOwn(run({}), 'rule_set'), false)
-  assert.deepEqual(run({ rule_set: [] }), { rule_set: [] })
-})
-test('malformed catalog preserved rather than overwritten', () => {
-  for (const value of ['bad', null, [null], [{ url: 'missing-tag' }]]) {
-    const t = { rule_set: value, rules: [{ rule_set: mirror.tag }] }
-    assert.deepEqual(run(t).rule_set, value)
+test('only stock entry losing last reference is removed', () => {
+  for (const definition of [{ url: a.url, type: a.type, tag: a.tag }, mirror, { ...a, update_interval: '1d' }, { ...a, tag: ['a'] }]) {
+    const t = { rule_set: [definition, b, custom], dns: { rules: [rule('a')] }, rules: [logical('a')] }
+    let before = referencedRuleSets(t); t.dns.rules = []; syncRuleSets(t, catalog, before)
+    assert.deepEqual(t.rule_set, [definition, b, custom]); before = referencedRuleSets(t); t.rules = []; syncRuleSets(t, catalog, before)
+    const stock = definition.tag === 'a' && definition.url === a.url && !definition.update_interval
+    assert.deepEqual(t.rule_set, stock ? [b, custom] : [definition, b, custom]); assert.deepEqual(t.rules, [])
   }
-})
-test('unknown references not fabricated or removed', () => {
-  const t = { dns: { rules: [{ rule_set: 'unknown' }] } }
-  assert.deepEqual(run(t), { dns: { rules: [{ rule_set: 'unknown' }] } })
-})
-
-test('grouped rule-set definitions remain intact and prevent duplicate catalog insertion', () => {
-  const group = { type: 'remote', tag: ['geosite-cn', 'custom'], url: 'https://example.org/{tag}.srs' }
-  const t = { rule_set: [group], dns: { rules: [{ rule_set: ['geosite-cn', 'custom', 'geosite-private'] }] } }
-  assert.deepEqual(run(t).rule_set, [group, catalog[0]])
 })
